@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="page.title">AtomSpectra · Сервис</title>
+<style>
+:root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; background:var(--bg); }
+body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; padding-bottom:28px; }
+a{ color:inherit; text-decoration:none; } button{ font-family:inherit; }
+.wrap{ max-width:none; margin:0; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+.brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+.logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+.logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+.logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+.chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+.chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+.chip.warn{ color:#f0c45a; border-color:rgba(240,180,60,.35); }
+#batt-chip{ display:inline-flex; align-items:center; }   /* #PWR-8: раньше inline gap:6px не работал без flex — иконка наезжала на цифры */
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+.dot.off{ background:#5b655a; box-shadow:none; }
+nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+.panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; padding:16px; }
+.mut{ color:#6b756a; }
+.grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; }
+.ttl{ font-size:14px; font-weight:600; color:#e8efe2; margin-bottom:13px; display:flex; align-items:center; gap:8px; }
+.btn{ width:100%; border-radius:8px; padding:9px 0; font-size:12.5px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); margin-top:13px; }
+.btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.4); color:var(--accent); font-weight:600; }
+.btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.4); color:#ff8a82; }
+.btn:hover{ filter:brightness(1.2); }
+.btn:disabled{ opacity:.45; cursor:default; filter:none; }
+.chip.lang{ cursor:pointer; color:var(--accent); border-color:rgba(52,211,192,.4); font-weight:600; padding:3px 8px; font-size:10.5px; line-height:1.2; min-width:28px; text-align:center; }
+.chip.lang:hover{ filter:brightness(1.15); }
+.fileRow{ display:flex; align-items:center; gap:10px; margin-top:4px; }
+.fileRow input[type=file]{ flex:1; font-size:11.5px; color:var(--dim); }
+pre.preview{ margin-top:12px; font-size:11px; line-height:1.5; color:#9aa496; background:#0b0e0a; border:1px solid #1b211a; border-radius:8px; padding:10px 12px; max-height:160px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+.warn-box{ font-size:11px; line-height:1.55; color:#f0c45a; background:rgba(240,180,60,.07); border:1px solid rgba(240,180,60,.3); border-radius:8px; padding:9px 11px; margin-top:12px; }
+.ptable{ width:100%; border-collapse:collapse; font-size:11.5px; }
+.ptable th{ text-align:left; padding:5px 8px; border-bottom:1px solid #283226; color:var(--dim); position:sticky; top:0; background:var(--panel); }
+.ptable td{ padding:4px 8px; border-bottom:1px solid #1b211a; }
+.ptable td.pname{ color:#9aa496; white-space:nowrap; }
+.console-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.console .btn{ width:auto; margin-top:0; padding:9px 16px; }
+.console .btn.sm{ padding:8px 13px; font-size:12.5px; }
+.grp{ display:flex; gap:8px; }
+.inp{ background:#0c0f0b; border:1px solid #283024; color:#e8efe2; padding:9px 12px; border-radius:8px; font-size:12px; outline:none; }
+#cmd-log{ font-size:11.5px; line-height:1.6; color:#7c887c; background:#0b0e0a; border:1px solid #1b211a; border-radius:8px; padding:10px 12px; max-height:200px; overflow:auto; white-space:pre; margin-top:12px; }
+</style>
+</head>
+<body>
+<header>
+<div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+<div class="chips"><span class="chip ok" id="dev-chip" style="visibility:hidden"><span class="dot" id="dev-dot"></span><span id="dev-stat">—</span></span><span class="chip" id="batt-chip" title="Battery" style="cursor:default;display:none;gap:6px"><span id="batt-icon" style="display:inline-block;width:18px;height:10px;border:1.4px solid #8a9686;border-radius:2px;position:relative;vertical-align:middle;margin-right:2px"><span id="batt-fill" style="display:block;height:100%;width:0%;background:#34d3c0;border-radius:1px"></span><span style="position:absolute;right:-4px;top:2.5px;width:2px;height:4px;background:#8a9686;border-radius:0 1px 1px 0"></span></span><span id="batt-pct">—%</span></span><span class="chip lang" id="langBtn">EN</span></div>
+</header>
+<nav>
+<a href="/" data-i18n="nav.spectrum">Спектр</a>
+<a href="/waterfall" data-i18n="nav.waterfall">Водопад</a>
+<a href="/monitor" data-i18n="nav.monitor">Мониторинг</a>
+<a href="/saved" data-i18n="nav.saved">Файлы</a>
+<a href="/system" data-i18n="nav.system">Система</a>
+<span class="on" data-i18n="nav.service">Сервис</span>
+</nav>
+
+<div class="wrap">
+
+<section class="panel console">
+<div class="ttl"><span style="color:var(--accent)">&#9998;</span> <span data-i18n="console.title">Командная строка прибора</span></div>
+<div class="console-row">
+<button class="btn sm" onclick="requestInfo()" data-i18n="btn.info">Инфо</button>
+<button class="btn sm" onclick="toggleLogPanel()" data-i18n="btn.log">Лог</button>
+<div class="grp"><input class="inp" id="cmd" data-i18n-placeholder="ph.cmd" placeholder="команда, напр. -inf" style="width:220px;max-width:50vw"><button class="btn sm green" onclick="sendCmd()" data-i18n="btn.send">Send</button></div>
+</div>
+<pre id="cmd-log" style="display:none"></pre>
+</section>
+
+<div class="grid">
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#8681;</span> <span data-i18n="backup.title">Бэкап настроек прибора</span></div>
+<div class="mut" style="font-size:11.5px;line-height:1.6" data-i18n="backup.hint">Считывает текущие настройки прибора (-inf + -tc_pot?) и сохраняет их в текстовый файл — тот же формат, что использует MCA.exe. Не изменяет состояние прибора.</div>
+<button class="btn green" id="btn-read" onclick="doRead()" data-i18n="backup.read">Считать</button>
+<button class="btn" id="btn-backup" onclick="doBackup()" data-i18n="backup.download">Скачать бэкап</button>
+<div class="mut" id="backup-status" style="font-size:11px;margin-top:9px;text-align:center;min-height:14px"></div>
+</section>
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#8679;</span> <span data-i18n="restore.title">Восстановление из бэкапа</span></div>
+<div class="mut" style="font-size:11.5px;line-height:1.6" data-i18n="restore.hint">Загрузите ранее сохранённый файл бэкапа — настройки будут отправлены в прибор командами протокола.</div>
+<div class="fileRow"><input type="file" id="restore-file" accept=".txt,text/plain"></div>
+<pre class="preview" id="restore-preview" style="display:none"></pre>
+<div class="warn-box" data-i18n="restore.warn">⚠ Это изменит физическую конфигурацию прибора (усиление, ВН, компенсация температуры и т.д.). Действие необратимо без отдельного бэкапа текущих настроек.</div>
+<button class="btn red" id="btn-restore" onclick="doRestore()" disabled data-i18n="restore.button">Восстановить из бэкапа</button>
+<div class="mut" id="restore-status" style="font-size:11px;margin-top:9px;text-align:center;min-height:14px"></div>
+</section>
+
+</div>
+
+<section class="panel" id="param-panel" style="display:none">
+<div class="ttl"><span style="color:var(--accent)">&#9776;</span> <span data-i18n="param.title">Параметры прибора</span></div>
+<div class="mut" id="param-hint" style="font-size:11px;margin-bottom:10px" data-i18n="param.hint">Слева — что прибор отдал прямо сейчас (-inf + -tc_pot?). Если справа появилась колонка «Из бэкапа» — загружен файл в панели восстановления, расхождения подсвечены красным.</div>
+<div style="overflow:auto;max-height:460px">
+<table class="ptable" id="param-table">
+<thead><tr>
+<th data-i18n="param.col.name">Параметр</th>
+<th data-i18n="param.col.live">Сейчас на приборе</th>
+<th id="param-file-col-header" style="display:none" data-i18n="param.col.file">Из бэкапа</th>
+</tr></thead>
+<tbody id="param-tbody"></tbody>
+</table>
+</div>
+</section>
+
+</div>
+
+<script>
+"use strict";
+var DICT={
+ ru:{
+  "page.title":"AtomSpectra · Сервис",
+  "device":"Прибор",
+  "nav.spectrum":"Спектр","nav.waterfall":"Водопад","nav.monitor":"Мониторинг","nav.saved":"Файлы","nav.system":"Система","nav.service":"Сервис",
+  "dev.chipOk":"Спектрометр подключен","dev.chipOff":"Спектрометр отключен",
+  "console.title":"Командная строка прибора",
+  "btn.info":"Инфо","btn.log":"Лог","btn.send":"Send",
+  "ph.cmd":"команда, напр. -inf",
+  "log.info":"Info requested","log.sent":"Sent: %1",
+  "backup.title":"Бэкап настроек прибора",
+  "backup.hint":"Считывает текущие настройки прибора (-inf + -tc_pot?) и сохраняет их в текстовый файл — тот же формат, что использует MCA.exe. Не изменяет состояние прибора.",
+  "backup.read":"Считать",
+  "backup.reading":"Считывание...",
+  "backup.readOk":"Считано",
+  "backup.download":"Скачать бэкап",
+  "backup.err":"Ошибка: прибор не отвечает / не подключён",
+  "param.title":"Параметры прибора",
+  "param.hint":"Слева — что прибор отдал прямо сейчас (-inf + -tc_pot?). Если справа появилась колонка «Из бэкапа» — загружен файл в панели восстановления, расхождения подсвечены красным.",
+  "param.col.name":"Параметр","param.col.live":"Сейчас на приборе","param.col.file":"Из бэкапа",
+  "param.VERSION":"VERSION (версия прошивки прибора)",
+  "param.RISE":"RISE (время нарастания)",
+  "param.FALL":"FALL (время спада)",
+  "param.NOISE":"NOISE (порог шума)",
+  "param.F":"F (частота АЦП, Гц)",
+  "param.MAX":"MAX (макс. интеграл)",
+  "param.HYST":"HYST (гистерезис)",
+  "param.MODE":"MODE (режим)",
+  "param.STEP":"STEP (шаг)",
+  "param.t":"t",
+  "param.POT":"POT (высокое напряжение, U)",
+  "param.POT2":"POT2 (усиление, V)",
+  "param.T1":"T1 (температурный датчик 1)",
+  "param.T2":"T2 (температурный датчик 2)",
+  "param.T3":"T3 (температурный датчик 3)",
+  "param.Prise":"Prise",
+  "param.Srise":"Srise",
+  "param.OUT":"OUT",
+  "param.Pfall":"Pfall",
+  "param.Sfall":"Sfall",
+  "param.TC":"TC (термокомпенсация MAX)",
+  "param.TCpot":"TCpot (термокомпенсация baseline)",
+  "param.TP":"TP",
+  "param.PileUpThr":"PileUpThr (порог pile-up)",
+  "param.Tco":"Tco[] (термокомп. MAX, пары темп:значение)",
+  "param.PileUp":"PileUp[] (таблица pile-up)",
+  "param.Tcpot":"Tcpot[] (термокомп. baseline, пары темп:значение)",
+  "restore.title":"Восстановление из бэкапа",
+  "restore.hint":"Загрузите ранее сохранённый файл бэкапа — настройки будут отправлены в прибор командами протокола.",
+  "restore.warn":"⚠ Это изменит физическую конфигурацию прибора (усиление, ВН, компенсация температуры и т.д.). Действие необратимо без отдельного бэкапа текущих настроек.",
+  "restore.button":"Восстановить из бэкапа",
+  "restore.confirm":"Восстановить настройки прибора из этого файла? Текущие настройки будут перезаписаны.",
+  "restore.notBackup":"Файл не похож на бэкап AtomSpectra (нет полей VERSION/RISE)",
+  "restore.applying":"Отправка настроек в прибор...",
+  "restore.ok":"Готово — настройки восстановлены",
+  "restore.err":"Ошибка восстановления",
+  "restore.noDevice":"Прибор не подключён"
+ },
+ en:{
+  "page.title":"AtomSpectra · Service",
+  "device":"Device",
+  "nav.spectrum":"Spectrum","nav.waterfall":"Waterfall","nav.monitor":"Monitoring","nav.saved":"Files","nav.system":"System","nav.service":"Service",
+  "dev.chipOk":"Spectrometer connected","dev.chipOff":"Spectrometer disconnected",
+  "console.title":"Device command console",
+  "btn.info":"Info","btn.log":"Log","btn.send":"Send",
+  "ph.cmd":"command, e.g. -inf",
+  "log.info":"Info requested","log.sent":"Sent: %1",
+  "backup.title":"Device settings backup",
+  "backup.hint":"Reads the device's current settings (-inf + -tc_pot?) and saves them to a text file — the same format used by MCA.exe. Does not change device state.",
+  "backup.read":"Read",
+  "backup.reading":"Reading...",
+  "backup.readOk":"Read OK",
+  "backup.download":"Download backup",
+  "backup.err":"Error: device not responding / not connected",
+  "param.title":"Device parameters",
+  "param.hint":"Left — what the device returned just now (-inf + -tc_pot?). If a \"From backup\" column appears on the right, a file is loaded in the restore panel; mismatches are highlighted in red.",
+  "param.col.name":"Parameter","param.col.live":"Live on device","param.col.file":"From backup",
+  "param.VERSION":"VERSION (device firmware version)",
+  "param.RISE":"RISE (rise time)",
+  "param.FALL":"FALL (fall time)",
+  "param.NOISE":"NOISE (noise threshold)",
+  "param.F":"F (ADC sampling frequency, Hz)",
+  "param.MAX":"MAX (max integral)",
+  "param.HYST":"HYST (hysteresis)",
+  "param.MODE":"MODE (mode)",
+  "param.STEP":"STEP (step)",
+  "param.t":"t",
+  "param.POT":"POT (high voltage, U)",
+  "param.POT2":"POT2 (gain, V)",
+  "param.T1":"T1 (temperature sensor 1)",
+  "param.T2":"T2 (temperature sensor 2)",
+  "param.T3":"T3 (temperature sensor 3)",
+  "param.Prise":"Prise",
+  "param.Srise":"Srise",
+  "param.OUT":"OUT",
+  "param.Pfall":"Pfall",
+  "param.Sfall":"Sfall",
+  "param.TC":"TC (MAX temp. compensation)",
+  "param.TCpot":"TCpot (baseline temp. compensation)",
+  "param.TP":"TP",
+  "param.PileUpThr":"PileUpThr (pile-up threshold)",
+  "param.Tco":"Tco[] (MAX temp comp, temp:value pairs)",
+  "param.PileUp":"PileUp[] (pile-up table)",
+  "param.Tcpot":"Tcpot[] (baseline temp comp, temp:value pairs)",
+  "restore.title":"Restore from backup",
+  "restore.hint":"Upload a previously saved backup file — the settings will be sent to the device via protocol commands.",
+  "restore.warn":"⚠ This changes the device's physical configuration (gain, HV, temperature compensation, etc). Not reversible without a separate backup of the current settings.",
+  "restore.button":"Restore from backup",
+  "restore.confirm":"Restore device settings from this file? Current settings will be overwritten.",
+  "restore.notBackup":"File doesn't look like an AtomSpectra backup (VERSION/RISE fields missing)",
+  "restore.applying":"Sending settings to device...",
+  "restore.ok":"Done — settings restored",
+  "restore.err":"Restore error",
+  "restore.noDevice":"Device not connected"
+ }
+};
+var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
+function t(k){var d=DICT[LANG]||DICT.ru;return(d[k]!==undefined)?d[k]:(DICT.ru[k]||k);}
+function tfmt(k){var s=t(k); for(var i=1;i<arguments.length;i++){s=s.replace("%"+i,arguments[i]);} return s;}
+function applyI18n(){
+ document.querySelectorAll("[data-i18n]").forEach(function(el){
+  var k=el.getAttribute("data-i18n"); el.textContent=t(k);
+ });
+ document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-placeholder"); el.placeholder=t(k);
+ });
+ document.documentElement.lang=LANG;
+ var b=document.getElementById("langBtn"); if(b)b.textContent=(LANG==="ru")?"EN":"RU";
+}
+function setLang(l){
+ if(l!=="ru"&&l!=="en")l="ru";
+ LANG=l; try{localStorage.setItem("aswf-lang",l);}catch(e){}
+ applyI18n();
+}
+
+var csrfToken="";
+var devConnected=false;
+async function loadCsrf(){try{var r=await(await fetch("/api/csrf-token")).json();csrfToken=r.token||""}catch(e){}}
+function post(url,opts){opts=opts||{};opts.method="POST";opts.headers=Object.assign({},opts.headers||{},{"X-CSRF-Token":csrfToken});return fetch(url,opts)}
+
+var logEl=document.getElementById("cmd-log");
+var devSeq=0;
+function lg(m){if(!logEl)return;logEl.textContent+=m+"\n";logEl.scrollTop=logEl.scrollHeight}
+async function pollDevLog(){try{var r=await(await fetch("/api/devlog?since="+devSeq)).json();if(r.lines&&r.lines.length){r.lines.forEach(function(e){var tt=(e.text||"").replace(/\n+$/,"");lg("← "+tt)})}if(typeof r.next==="number")devSeq=r.next}catch(e){}}
+async function requestInfo(){await post("/api/command",{body:"-inf"});await post("/api/command",{body:"-cal"});lg(t("log.info"));setTimeout(pollDevLog,600);setTimeout(pollDevLog,1500)}
+async function sendCmd(){var c=document.getElementById("cmd").value;if(!c)return;await post("/api/command",{body:c});lg(tfmt("log.sent",c));setTimeout(pollDevLog,600);setTimeout(pollDevLog,1500)}
+function toggleLogPanel(){logEl.style.display=logEl.style.display==="none"?"block":"none"}
+document.getElementById("cmd").addEventListener("keydown",function(e){if(e.key==="Enter")sendCmd()});
+
+async function refreshSystem(){
+ try{
+  var r=await(await fetch("/api/system")).json();
+  var devDot=document.getElementById("dev-dot"), devStat=document.getElementById("dev-stat"), devChip=document.getElementById("dev-chip");
+  devChip.style.visibility="";
+  devConnected=!!r.usb_connected;
+  if(devConnected){
+   devDot.classList.remove("off"); devStat.textContent=t("dev.chipOk"); devChip.classList.remove("warn"); devChip.classList.add("ok");
+  }else{
+   devDot.classList.add("off"); devStat.textContent=t("dev.chipOff"); devChip.classList.add("warn"); devChip.classList.remove("ok");
+  }
+  var bc=document.getElementById("batt-chip");
+  if(bc){
+   if(r.batt_present){
+    bc.style.display="";
+    var bpct=(typeof r.batt_percent==="number")?Math.max(0,Math.min(100,Math.round(r.batt_percent))):0;
+    var fillEl=document.getElementById("batt-fill");
+    if(fillEl){fillEl.style.width=bpct+"%";fillEl.style.background=bpct<20?"#ff8a82":bpct<50?"#f0c45a":"#34d3c0";}
+    var pctEl=document.getElementById("batt-pct");
+    if(pctEl)pctEl.textContent=(r.batt_charging?"\u26a1":"")+bpct+"%";
+    var vTxt=(typeof r.batt_voltage==="number")?r.batt_voltage.toFixed(2)+"V":"";
+    bc.title="Battery: "+vTxt+(r.batt_charging?" \u00b7 charging":r.batt_chg_done?" \u00b7 charged":"");
+   } else {
+    bc.style.display="none";
+   }
+  }
+ }catch(e){}
+}
+
+async function doBackup(){
+ var s=document.getElementById("backup-status");
+ s.style.color="var(--dim)"; s.textContent="";
+ try{
+  var r=await fetch("/api/settings/backup");
+  if(!r.ok){ s.textContent=t("backup.err"); s.style.color="#ff8a82"; return; }
+  var blob=await r.blob();
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url; a.download="atomspectra_backup.txt";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},2000);
+ }catch(e){ s.textContent=t("backup.err"); s.style.color="#ff8a82"; }
+}
+
+function isKvBoundary(c){ return c===undefined||c===" "||c==="\t"||c==="\r"||c==="\n"; }
+function findKV(text,key){
+ var idx=0;
+ while(true){
+  var p=text.indexOf(key,idx);
+  if(p<0) return null;
+  var leftOk=(p===0)||isKvBoundary(text[p-1]);
+  var after=p+key.length;
+  var rightOk=isKvBoundary(text[after]);
+  if(leftOk&&rightOk){
+   var c=text[after];
+   return (c===" "||c==="\t")?after+1:after;
+  }
+  idx=p+1;
+ }
+}
+function kvToken(text,key){
+ var v=findKV(text,key); if(v===null) return null;
+ var m=text.slice(v).match(/^[^\s]*/); return m?m[0]:"";
+}
+function kvArray(text,key){
+ var v=findKV(text,key); if(v===null) return null;
+ var s=text.slice(v).replace(/^\s+/,"");
+ if(s.charAt(0)!=="[") return null;
+ var end=s.indexOf("]"); if(end<0) return null;
+ var inner=s.slice(1,end).trim();
+ return inner?inner.split(/\s+/):[];
+}
+var PARAM_DEFS=[
+ ["VERSION","scalar"],["RISE","scalar"],["FALL","scalar"],["NOISE","scalar"],
+ ["F","scalar"],["MAX","scalar"],["HYST","scalar"],["MODE","scalar"],["STEP","scalar"],
+ ["t","scalar"],["POT","scalar"],["POT2","scalar"],["T1","scalar"],["T2","scalar"],["T3","scalar"],
+ ["Prise","scalar"],["Srise","scalar"],["OUT","scalar"],["Pfall","scalar"],["Sfall","scalar"],
+ ["TC","scalar"],["TCpot","scalar"],["TP","scalar"],["PileUpThr","scalar"],
+ ["Tco","pairs"],["PileUp","flat"],["Tcpot","pairs"]
+];
+function paramLabel(key){ var k="param."+key; var v=t(k); return v!==k?v:key; }
+function fmtArray(kind,arr){
+ if(arr===null) return "—";
+ if(arr.length===0) return "[]";
+ if(kind==="pairs"){
+  var out=[];
+  for(var i=0;i+1<arr.length;i+=2) out.push(arr[i]+":"+arr[i+1]);
+  return out.join(" ");
+ }
+ return arr.join(" ");
+}
+var lastReadText=null;
+function renderParamTable(liveText,fileText){
+ var tbody=document.getElementById("param-tbody");
+ tbody.innerHTML="";
+ var hasFile=!!fileText;
+ document.getElementById("param-file-col-header").style.display=hasFile?"":"none";
+ PARAM_DEFS.forEach(function(def){
+  var key=def[0], kind=def[1];
+  var liveVal,fileVal;
+  if(kind==="scalar"){
+   liveVal=kvToken(liveText,key); liveVal=(liveVal===null||liveVal==="")?"—":liveVal;
+   if(hasFile){ fileVal=kvToken(fileText,key); fileVal=(fileVal===null||fileVal==="")?"—":fileVal; }
+  }else{
+   liveVal=fmtArray(kind,kvArray(liveText,key));
+   if(hasFile) fileVal=fmtArray(kind,kvArray(fileText,key));
+  }
+  var tr=document.createElement("tr");
+  var tdName=document.createElement("td");
+  tdName.className="pname"; tdName.textContent=paramLabel(key);
+  var tdLive=document.createElement("td");
+  tdLive.textContent=liveVal;
+  tr.appendChild(tdName); tr.appendChild(tdLive);
+  if(hasFile){
+   var same=(liveVal===fileVal);
+   var tdFile=document.createElement("td");
+   tdFile.textContent=fileVal;
+   tdFile.style.color=same?"var(--accent)":"#ff8a82";
+   tdLive.style.color=same?"var(--accent)":"#ff8a82";
+   tr.appendChild(tdFile);
+  }
+  tbody.appendChild(tr);
+ });
+ document.getElementById("param-panel").style.display="";
+}
+async function doRead(){
+ var s=document.getElementById("backup-status");
+ s.style.color="var(--dim)"; s.textContent=t("backup.reading");
+ try{
+  var r=await fetch("/api/settings/backup");
+  if(!r.ok){ s.textContent=t("backup.err"); s.style.color="#ff8a82"; return; }
+  var txt=await r.text();
+  lastReadText=txt;
+  renderParamTable(lastReadText,restoreText);
+  s.textContent=t("backup.readOk"); s.style.color="var(--accent)";
+ }catch(e){ s.textContent=t("backup.err"); s.style.color="#ff8a82"; }
+}
+
+var restoreText=null;
+document.addEventListener("DOMContentLoaded",function(){
+ document.getElementById("restore-file").addEventListener("change",function(ev){
+  var f=ev.target.files && ev.target.files[0];
+  var btn=document.getElementById("btn-restore");
+  var pv=document.getElementById("restore-preview");
+  var s=document.getElementById("restore-status"); s.textContent="";
+  restoreText=null; btn.disabled=true; pv.style.display="none";
+  if(lastReadText) renderParamTable(lastReadText,null);
+  if(!f) return;
+  var reader=new FileReader();
+  reader.onload=function(){
+   restoreText=String(reader.result||"");
+   pv.textContent=restoreText;
+   pv.style.display="block";
+   var looksValid=restoreText.indexOf("VERSION ")>=0 && restoreText.indexOf("RISE ")>=0;
+   if(!looksValid){ s.textContent=t("restore.notBackup"); s.style.color="#ff8a82"; return; }
+   btn.disabled=false;
+   if(lastReadText) renderParamTable(lastReadText,restoreText);
+  };
+  reader.readAsText(f);
+ });
+});
+
+async function doRestore(){
+ var s=document.getElementById("restore-status");
+ if(!restoreText){ return; }
+ if(!devConnected){ s.textContent=t("restore.noDevice"); s.style.color="#ff8a82"; return; }
+ if(!confirm(t("restore.confirm"))) return;
+ s.style.color="var(--dim)"; s.textContent=t("restore.applying");
+ document.getElementById("btn-restore").disabled=true;
+ try{
+  var r=await post("/api/settings/restore",{headers:{"Content-Type":"text/plain"},body:restoreText});
+  var j=await r.json().catch(function(){return {};});
+  if(r.ok && j.ok){ s.textContent=t("restore.ok"); s.style.color="var(--accent)"; }
+  else{ s.textContent=t("restore.err"); s.style.color="#ff8a82"; }
+ }catch(e){ s.textContent=t("restore.err"); s.style.color="#ff8a82"; }
+ document.getElementById("btn-restore").disabled=false;
+}
+
+(async function(){
+ applyI18n();
+ document.getElementById("langBtn").onclick=function(){setLang(LANG==="ru"?"en":"ru");};
+ await loadCsrf();
+ await refreshSystem();
+ setInterval(refreshSystem,3000);
+})();
+</script>
+<script src="/common-time.js"></script>
+</body>
+</html>

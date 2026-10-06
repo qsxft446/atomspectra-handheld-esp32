@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtomSpectra · Спектр</title>
+<style>
+:root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; background:var(--bg); }
+body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; -webkit-text-size-adjust:100%; padding-bottom:28px; }
+a{ color:inherit; text-decoration:none; }
+button,input{ font-family:inherit; }
+.wrap{ max-width:none; margin:0; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+.brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+.logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+.logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+.logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+.chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+.chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+.chip.warn{ color:#f0c45a; border-color:rgba(240,180,60,.35); }
+#batt-chip{ display:inline-flex; align-items:center; }   /* #PWR-8: раньше inline gap:6px не работал без flex — иконка наезжала на цифры */
+.chip.lang{ cursor:pointer; color:var(--accent); border-color:rgba(52,211,192,.4); font-weight:600; padding:3px 8px; font-size:10.5px; line-height:1.2; min-width:28px; text-align:center; }
+.chip.lang:hover{ filter:brightness(1.15); }
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+.dot.off{ background:#5b655a; box-shadow:none; }
+nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+.panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; }
+.pad{ padding:13px 16px; }
+.status{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; font-size:12.5px; color:var(--dim); padding:2px; }
+.status .sep{ color:#3a443a; } .status .ac{ color:var(--accent); font-weight:600; } .status .w{ color:var(--txt); } .mut{ color:#6b756a; }
+.bar{ height:8px; border-radius:4px; background:#1b211a; overflow:hidden; } .bar > i{ display:block; height:100%; border-radius:4px; transition:width .3s,background .3s; }
+.row{ display:flex; align-items:center; gap:16px; padding:12px 16px; flex-wrap:wrap; }
+.row + .row{ border-top:1px solid #1b211a; }
+.grp{ display:flex; gap:8px; }
+.btn{ border-radius:8px; padding:9px 16px; font-size:13px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); }
+.btn.sm{ padding:8px 13px; font-size:12.5px; }
+.btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.5); color:var(--accent); font-weight:600; }
+.btn.amber{ background:rgba(240,180,60,.08); border-color:rgba(240,180,60,.45); color:#f0c45a; }
+.btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.45); color:#ff8a82; }
+.btn:hover{ filter:brightness(1.2); }
+.seg{ display:flex; border:1px solid #2a322a; border-radius:7px; overflow:hidden; }
+.seg button{ padding:7px 14px; font-size:12px; cursor:pointer; border:none; background:transparent; color:#9aa496; }
+.seg button.on{ background:var(--accent); color:#0c1206; font-weight:700; }
+.lbl{ font-size:11.5px; color:#6b756a; }
+.big{ font-size:28px; font-weight:600; color:#e8efe2; letter-spacing:1px; }
+.big.ac{ color:var(--accent); font-size:22px; } .big.w{ font-size:22px; }
+.ml{ margin-left:auto; }
+.overlay{ position:absolute; top:10px; right:14px; text-align:right; font-size:11.5px; line-height:1.6; color:#aeb6a8; background:rgba(8,10,8,.55); border:1px solid #283024; border-radius:6px; padding:7px 11px; pointer-events:none; min-width:160px; }
+.inp{ background:#0c0f0b; border:1px solid #283024; color:#e8efe2; padding:9px 12px; border-radius:8px; font-size:12px; outline:none; }
+.cal-coef{ display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.cal-coef span{ font-size:11.5px; color:#8a9686; width:74px; }
+.cal-coef input{ flex:1; background:#0c0f0b; border:1px solid #283024; color:var(--accent); padding:7px 10px; border-radius:7px; font-size:12px; outline:none; }
+table.saved{ border-collapse:collapse; width:100%; font-size:12px; }
+table.saved th,table.saved td{ border-bottom:1px solid #1b211a; padding:8px 10px; text-align:left; color:#cfd6cd; }
+table.saved th{ color:var(--accent); font-weight:600; font-size:11.5px; }
+table.saved tr.on td{ background:rgba(110,168,255,.07); }
+.empty{ color:#5b655a; font-style:italic; font-size:12.5px; }
+#overlay-label{ color:#f0c45a; font-size:12px; }
+@media (max-width:520px){ .big{ font-size:24px } }
+</style>
+</head>
+<body>
+<header>
+<div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+<div class="chips">
+<span class="chip ok" id="dev-chip" style="visibility:hidden"><span class="dot" id="dev-dot"></span><span id="device-chip">—</span></span>
+<!-- #PWR-1: значок батареи cg-bq-1v0 (BQ25895) — виден только если плата обнаружена по I2C -->
+<span class="chip" id="batt-chip" title="Battery" style="cursor:default;display:none;gap:6px">
+<span id="batt-icon" style="display:inline-block;width:18px;height:10px;border:1.4px solid var(--dim);border-radius:2px;position:relative;vertical-align:middle;margin-right:2px">
+<span id="batt-fill" style="display:block;height:100%;width:0%;background:var(--accent);border-radius:1px"></span>
+<span style="position:absolute;right:-4px;top:2.5px;width:2px;height:4px;background:var(--dim);border-radius:0 1px 1px 0"></span>
+</span>
+<span id="batt-pct">—%</span>
+</span>
+<span class="chip lang" id="langBtn">EN</span>
+</div>
+</header>
+<nav>
+<span class="on" data-i18n="nav.spectrum">Спектр</span>
+<a href="/waterfall" data-i18n="nav.waterfall">Водопад</a>
+<a href="/monitor" data-i18n="nav.monitor">Мониторинг</a>
+<a href="/saved" data-i18n="nav.saved">Файлы</a>
+<a href="/system" data-i18n="nav.system">Система</a>
+<a href="/service" data-i18n="nav.service">Сервис</a>
+</nav>
+
+<div class="wrap">
+<div class="status" id="status" data-i18n="status.connecting">Подключение...</div>
+<div id="dead-banner" style="display:none;margin-bottom:10px;padding:11px 14px;border:1px solid #d9634e;border-radius:8px;background:rgba(217,99,78,.12);color:#f0a08e;font-size:13px;line-height:1.5"></div>
+
+<section class="panel pad">
+<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:#aeb6a8">
+<span><span id="flash-label" style="color:var(--accent);font-weight:600" data-i18n="flash.label">&#9921; Flash LittleFS</span> &nbsp; <span id="flash-text">...</span></span>
+</div>
+<div class="bar"><i id="flash-inner" style="width:0%;background:var(--accent);box-shadow:0 0 8px rgba(52,211,192,.4)"></i></div>
+</section>
+
+<section class="panel">
+<div class="row">
+<div class="grp">
+<button class="btn green" onclick="startAcq()" data-i18n-html="btn.start">&#9654; Старт</button>
+<button class="btn amber" onclick="stopAcq()" data-i18n-html="btn.stop">&#9632; Стоп</button>
+<button class="btn red" onclick="resetSpectrum()" data-i18n-html="btn.reset">&#8634; Сброс</button>
+</div>
+<div class="ml" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+<span class="big" id="big-time">00:00:00</span><span class="mut">|</span>
+<span class="big ac"><span id="big-cps">0</span><span class="mut" style="font-size:12px"> CPS</span></span><span class="mut">|</span>
+<span class="big w"><span id="big-total">0</span><span class="mut" style="font-size:12px"> counts</span></span>
+<span class="mut" id="big-dose-sep" style="display:none">|</span>
+<span class="big ac" id="big-dose-wrap" style="display:none"><span id="big-dose">0.000</span><span class="mut" style="font-size:12px"> µSv/h</span></span>
+</div>
+</div>
+<div class="row">
+<div style="display:flex;align-items:center;gap:8px"><span class="lbl" data-i18n="ctl.scale">Шкала Y</span><div class="seg" id="seg-scale"><button id="btn-lin" class="on" onclick="setLog(false)">Lin</button><button id="btn-log" onclick="setLog(true)">Log</button></div></div>
+<div style="display:flex;align-items:center;gap:8px"><span class="lbl" data-i18n="ctl.value">Величина</span><div class="seg" id="seg-y"><button id="btn-cnt" onclick="setCps(false)">Counts</button><button id="btn-cps" class="on" onclick="setCps(true)">CPS</button></div></div>
+<div style="display:flex;align-items:center;gap:8px"><span class="lbl" data-i18n="ctl.x">Ось X</span><div class="seg" id="seg-x"><button id="btn-ch" onclick="setKev(false)">Ch</button><button id="btn-kev" class="on" onclick="setKev(true)">keV</button></div></div>
+<!-- #UI-3: оверлей энергетических линий нуклидов -->
+<div style="display:flex;align-items:center;gap:8px;position:relative">
+ <button class="btn sm" id="btn-nuc" onclick="toggleNucPanel()" data-i18n-html="nuc.toggle" title="" disabled style="opacity:.5">&#9883; Линии</button>
+ <button class="btn sm" id="btn-nuc-vis" onclick="toggleNucVis()" title=""></button><!-- #UI-40 mirror: быстрый on/off видимости, выбор не меняется -->
+ <div id="nuc-panel" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:10;background:#0e120d;border:1px solid #2a322a;border-radius:8px;padding:10px 12px;min-width:260px;box-shadow:0 6px 18px rgba(0,0,0,.5)"></div>
+</div>
+<div class="ml" style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#6b756a"><span style="width:18px;height:3px;border-radius:2px;background:var(--accent);display:inline-block"></span><span data-i18n="legend.live">живой</span></div>
+</div>
+</section>
+
+<section class="panel pad">
+<div style="position:relative">
+<canvas id="sp" width="1200" height="400" style="width:100%;height:auto;display:block;cursor:crosshair"></canvas>
+<canvas id="spcur" width="1200" height="400" style="position:absolute;left:0;top:0;width:100%;height:auto;pointer-events:none"></canvas>
+<div class="overlay"><div id="cursor-info" data-i18n="cursor.hint" style="color:#5b655a">наведите курсор</div></div>
+</div>
+</section>
+
+<div class="row" style="padding:0;gap:8px">
+<button class="btn sm green" onclick="saveSpectrum()" data-i18n-html="btn.save">&#128190; Сохранить</button>
+<button class="btn sm" onclick="location.href='/api/export.xml'" data-i18n="btn.expXml">Export XML</button>
+<button class="btn sm" onclick="location.href='/api/export.csv'" data-i18n="btn.expCsv">Export CSV</button>
+<button class="btn sm" onclick="location.href='/api/export.n42'" data-i18n="btn.expN42">Export N42</button>
+<button class="btn sm" onclick="location.href='/api/export.spe'" data-i18n="btn.expSpe">Export SPE</button>
+<button class="btn sm" onclick="clearOverlay()" id="btn-clear-ovl" style="display:none" data-i18n="btn.clearOvl">Снять overlay</button>
+<span id="overlay-label"></span>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;font-size:12px;color:#8a9686">
+ <span>Префикс файлов:</span>
+ <input type="text" id="fx-prefix" maxlength="23" spellcheck="false" autocomplete="off" placeholder="MY1" title="Добавляется в начало имени всех выгрузок этой платы. Латиница, цифры, _ и -." style="width:110px;background:#11150f;color:#cfd6cd;border:1px solid #444;padding:4px 7px;border-radius:4px;font-family:inherit;font-size:12px">
+ <button type="button" onclick="savePrefix()" style="cursor:pointer;background:rgba(52,211,192,.12);border:1px solid rgba(52,211,192,.4);color:#34d3c0;border-radius:6px;padding:5px 12px;font-family:inherit;font-size:12px;font-weight:600">Сохранить</button>
+ <span id="fx-prefix-st" style="min-width:16px;font-size:14px"></span>
+</div>
+
+<section class="panel">
+<div class="row" id="cal-head" style="cursor:pointer;border:none">
+<span id="cal-arrow" style="color:var(--accent)">&#9654;</span>
+<span style="font-size:13px;font-weight:600;color:#e8efe2" data-i18n="cal.title">Калибровка энергии</span>
+<span class="lbl">E(ch) = e + d&middot;ch + c&middot;ch&sup2; + b&middot;ch&sup3; + a&middot;ch&#8308;</span>
+<span class="ml" id="calib-status" data-i18n="cal.unset" style="font-size:11px;color:#5b655a;border:1px solid #2a322a;border-radius:999px;padding:3px 10px">Не задана</span>
+</div>
+<div id="cal-body" style="display:none;padding:0 16px 14px">
+<div style="max-width:460px">
+<div class="cal-coef"><span>a (ch&#8308;)</span><input id="cal-a" type="text" placeholder="0"></div>
+<div class="cal-coef"><span>b (ch&sup3;)</span><input id="cal-b" type="text" placeholder="0"></div>
+<div class="cal-coef"><span>c (ch&sup2;)</span><input id="cal-c" type="text" placeholder="0"></div>
+<div class="cal-coef"><span>d (ch&sup1;)</span><input id="cal-d" type="text" placeholder="0"></div>
+<div class="cal-coef"><span>e (offset)</span><input id="cal-e" type="text" placeholder="0"></div>
+</div>
+<div class="grp" style="margin-top:8px;flex-wrap:wrap">
+<button class="btn sm green" onclick="applyCalib()" data-i18n="cal.apply">Применить</button>
+<button class="btn sm" onclick="clearCalib()" data-i18n="cal.clear">Очистить</button>
+<button class="btn sm" onclick="requestInfo()" data-i18n="cal.read">Считать с прибора</button>
+</div>
+</div>
+</section>
+
+<section class="panel pad">
+<div style="display:flex;justify-content:space-between;margin-bottom:12px">
+<span style="font-size:14px;font-weight:600;color:#e8efe2" data-i18n="saved.title">Сохранённые спектры</span>
+<a class="lbl" href="/saved" style="color:var(--accent)" data-i18n-html="saved.all">все &rarr;</a>
+</div>
+<div id="saved"><span class="empty" data-i18n="saved.loading">Загрузка...</span></div>
+</section>
+</div>
+
+<script>
+"use strict";
+var DICT={
+ ru:{
+  "device":"Прибор","dev.chipOk":"Спектрометр подключен","dev.chipOff":"Спектрометр отключен",
+  "nav.spectrum":"Спектр","nav.waterfall":"Водопад","nav.monitor":"Мониторинг","nav.saved":"Файлы","nav.system":"Система","nav.service":"Сервис",
+  "mode.indoor":"Indoor","mode.outdoor":"Outdoor","mode.confirmOut":"Переключить в полевой режим (Outdoor)? Плата перезагрузится, поднимет точку доступа AtomSpectra-Outdoor, текущее подключение прервётся.","mode.confirmIn":"Вернуться в домашний режим (Indoor)? Плата перезагрузится и подключится к домашней сети.",
+  "batt.charging":"Заряд","batt.full":"Заряжена","batt.onBattery":"От АКБ","batt.title":"Батарея (cg-bq-1v0)",
+  "status.connecting":"Подключение...",
+  "status.rebooting":"Перезагрузка...",
+  "status.wifiSetup":"Настройка WiFi...",
+  "status.nodata":"Нет данных",
+  "dead.warn":"⚠ Спектрометр определился, но не отвечает — нет данных. Скорее всего подключён без питания. Выключите питание платы на ~5 секунд и включите снова, уже с подключённым спектрометром.",
+  "flash.label":"⚙ Flash LittleFS","flash.labelSd":"⚙ SD-карта","flash.fmtSd":"%1 / %2 МБ (%3%) &middot; свободно %4 МБ",
+  "flash.fmt":"%1 / %2 КБ (%3%) &middot; свободно %4 КБ",
+  "btn.start":"&#9654; Старт","btn.stop":"&#9632; Стоп","btn.reset":"&#8634; Сброс",
+  "btn.save":"&#128190; Сохранить",
+  "btn.expXml":"Export XML","btn.expCsv":"Export CSV","btn.expN42":"Export N42","btn.expSpe":"Export SPE",
+  "btn.clearOvl":"Снять overlay",
+  "btn.rebootDev":"Reboot прибора","btn.rebootEsp":"Reboot ESP","btn.wifiReset":"WiFi Reset",
+  "ctl.scale":"Шкала Y","ctl.value":"Величина","ctl.x":"Ось X",
+  "nuc.toggle":"&#9883; Линии","nuc.title":"Линии нуклидов",
+  "nuc.all":"Все","nuc.none":"Снять",
+  "nuc.need_cal":"Нужна калибровка энергии",
+  "btn.lines":"Линии","st.on":"вкл","st.off":"выкл","btn.lines_title":"Показать/скрыть выбранные линии нуклидов — сам выбор не меняется",
+  "legend.live":"живой",
+  "cursor.hint":"наведите курсор",
+  "cal.title":"Калибровка энергии",
+  "cal.unset":"Не задана","cal.set":"Задана","cal.applied":"Применена","cal.error":"Ошибка",
+  "cal.apply":"Применить","cal.clear":"Очистить","cal.read":"Считать с прибора",
+  "saved.title":"Сохранённые спектры","saved.all":"все &rarr;",
+  "saved.loading":"Загрузка...","saved.empty":"Нет сохранённых",
+  "ax.ch":"Channel","ax.kev":"keV","ax.cnt":"Counts","ax.cps":"CPS",
+  "cur.kev":"кэВ","cur.cnt":"counts",
+  "th.idx":"#","th.saved":"Сохранено","th.counts":"Counts","th.time":"Время","th.export":"Export",
+  "btn.overlay":"Overlay","btn.del":"Удал.",
+  "confirm.del":"Удалить спектр #%1?",
+  "confirm.rebootDev":"Перезагрузить спектрометр?",
+  "confirm.rebootEsp":"Перезагрузить ESP32?",
+  "confirm.wifiReset":"Сбросить WiFi?",
+  "saved.savedAs":"Сохранён #%1","saved.onSd":" на SD-карту","saved.onFlash":" во флеш (SD-карты нет)","saved.saveErr":"Ошибка сохранения",
+  "saved.saveErrNoData":"Нет данных спектра (прибор не подключён/не выдаёт спектр)","saved.saveErrNoSpace":"Мало места на SD-карте — удалите старые снимки","saved.saveErrNoSd":"Не сохранено: нет SD-карты (вставьте карту и перезагрузите плату)",
+  "log.start":"Start sent","log.stop":"Stop sent","log.reset":"Reset sent","log.info":"Info requested",
+  "log.ovlOk":"Overlay loaded: #%1","log.ovlErr":"Overlay error: %1","log.ovlClear":"Overlay cleared",
+  "log.del":"Deleted #%1","log.rebootDev":"Reboot device sent",
+  "log.cal":"Calibration: [%1]","log.calErr":"Calibration error: %1","log.calClear":"Calibration cleared",
+  "st.real":"Реал.","st.live":"Живое","st.dead":"Мёртв.","st.dose":"МД",
+  "err.prefix":"Error: %1"
+ },
+ en:{
+  "device":"Device","dev.chipOk":"Spectrometer connected","dev.chipOff":"Spectrometer disconnected",
+  "nav.spectrum":"Spectrum","nav.waterfall":"Waterfall","nav.monitor":"Monitoring","nav.saved":"Files","nav.system":"System","nav.service":"Service",
+  "mode.indoor":"Indoor","mode.outdoor":"Outdoor","mode.confirmOut":"Switch to field mode (Outdoor)? The board will reboot, bring up the AtomSpectra-Outdoor access point, and the current connection will drop.","mode.confirmIn":"Return to home mode (Indoor)? The board will reboot and connect to the home network.",
+  "batt.charging":"Charging","batt.full":"Charged","batt.onBattery":"On battery","batt.title":"Battery (cg-bq-1v0)",
+  "status.connecting":"Connecting...",
+  "status.rebooting":"Rebooting...",
+  "status.wifiSetup":"WiFi setup...",
+  "status.nodata":"No data",
+  "dead.warn":"⚠ Spectrometer detected but not responding — no data. It is likely connected without power. Switch the board power off for ~5 seconds, then on again with the spectrometer already connected.",
+  "flash.label":"⚙ Flash LittleFS","flash.labelSd":"⚙ SD card","flash.fmtSd":"%1 / %2 MB (%3%) &middot; free %4 MB",
+  "flash.fmt":"%1 / %2 KB (%3%) &middot; free %4 KB",
+  "btn.start":"&#9654; Start","btn.stop":"&#9632; Stop","btn.reset":"&#8634; Reset",
+  "btn.save":"&#128190; Save",
+  "btn.expXml":"Export XML","btn.expCsv":"Export CSV","btn.expN42":"Export N42","btn.expSpe":"Export SPE",
+  "btn.clearOvl":"Clear overlay",
+  "btn.rebootDev":"Reboot device","btn.rebootEsp":"Reboot ESP","btn.wifiReset":"WiFi Reset",
+  "ctl.scale":"Y scale","ctl.value":"Value","ctl.x":"X axis",
+  "nuc.toggle":"&#9883; Lines","nuc.title":"Nuclide lines",
+  "nuc.all":"All","nuc.none":"None",
+  "nuc.need_cal":"Energy calibration required",
+  "btn.lines":"Lines","st.on":"on","st.off":"off","btn.lines_title":"Show/hide selected nuclide lines — selection itself unchanged",
+  "legend.live":"live",
+  "cursor.hint":"hover the chart",
+  "cal.title":"Energy calibration",
+  "cal.unset":"Not set","cal.set":"Set","cal.applied":"Applied","cal.error":"Error",
+  "cal.apply":"Apply","cal.clear":"Clear","cal.read":"Read from device",
+  "saved.title":"Saved spectra","saved.all":"all &rarr;",
+  "saved.loading":"Loading...","saved.empty":"No saved spectra",
+  "ax.ch":"Channel","ax.kev":"keV","ax.cnt":"Counts","ax.cps":"CPS",
+  "cur.kev":"keV","cur.cnt":"counts",
+  "th.idx":"#","th.saved":"Saved","th.counts":"Counts","th.time":"Time","th.export":"Export",
+  "btn.overlay":"Overlay","btn.del":"Del",
+  "confirm.del":"Delete spectrum #%1?",
+  "confirm.rebootDev":"Reboot spectrometer?",
+  "confirm.rebootEsp":"Reboot ESP32?",
+  "confirm.wifiReset":"Reset WiFi?",
+  "saved.savedAs":"Saved #%1","saved.onSd":" to SD card","saved.onFlash":" to flash (no SD card)","saved.saveErr":"Save error",
+  "saved.saveErrNoData":"No spectrum data (device not connected / no spectrum)","saved.saveErrNoSpace":"Low space on SD card — delete old snapshots","saved.saveErrNoSd":"Not saved: no SD card (insert a card and reboot the board)",
+  "log.start":"Start sent","log.stop":"Stop sent","log.reset":"Reset sent","log.info":"Info requested",
+  "log.sent":"Sent: %1","log.ovlOk":"Overlay loaded: #%1","log.ovlErr":"Overlay error: %1","log.ovlClear":"Overlay cleared",
+  "log.del":"Deleted #%1","log.rebootDev":"Reboot device sent",
+  "log.cal":"Calibration: [%1]","log.calErr":"Calibration error: %1","log.calClear":"Calibration cleared",
+  "st.real":"Real","st.live":"Live","st.dead":"Dead","st.dose":"DR",
+  "err.prefix":"Error: %1"
+ }
+};
+var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
+function tr(k){var d=DICT[LANG]||DICT.ru;return(d[k]!==undefined)?d[k]:(DICT.ru[k]||k);}
+function tfmt(k){var s=tr(k); for(var i=1;i<arguments.length;i++){s=s.replace("%"+i,arguments[i]);} return s;}
+function lcl(){return LANG==="ru"?"ru-RU":"en-US";}
+function applyI18n(){
+ document.querySelectorAll("[data-i18n]").forEach(function(el){
+  var k=el.getAttribute("data-i18n"); el.textContent=tr(k);
+ });
+ document.querySelectorAll("[data-i18n-html]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-html"); el.innerHTML=tr(k);
+ });
+ document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-placeholder"); el.placeholder=tr(k);
+ });
+ document.documentElement.lang=LANG;
+ var b=document.getElementById("langBtn"); if(b)b.textContent=(LANG==="ru")?"EN":"RU";
+ document.title="AtomSpectra · "+tr("nav.spectrum");
+ if(typeof syncNucVisBtn==="function")syncNucVisBtn();   // #UI-40 mirror: подпись кнопки on/off при старте и смене языка
+}
+function setLang(l){
+ if(l!=="ru"&&l!=="en")l="ru";
+ LANG=l; try{localStorage.setItem("aswf-lang",l);}catch(e){}
+ applyI18n();
+ if(typeof populateNucPanel==="function")populateNucPanel();
+ if(lastD)draw(lastD);else clearCanvas();
+ loadFlashInfo();
+ loadSaved();
+ refreshCalibStatus();
+}
+
+var C=document.getElementById("sp"),X=C.getContext("2d");
+var Ccur=document.getElementById("spcur"),Xcur=Ccur.getContext("2d");
+(function(){var dpr=Math.max(2,window.devicePixelRatio||1);/* #UI-18: supersample ≥2× → в zoom-оверлее источник downscale'ится, цифры чёткие */function hidpi(c,ctx,w,h){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}hidpi(C,X,1200,400);hidpi(Ccur,Xcur,1200,400);})();
+var cursorCh=-1;
+var logEl=document.getElementById("log");
+var overlayBins=null,overlayIdx=-1;
+var isLog=false,isCps=true,isKev=true;  /* #UI-34: дефолты тумблеров — Lin / CPS / keV (#TFT-24: Lin по умолчанию, как на экране платы) */
+var calib=null,lastD=null,calibEditing=false;
+var devSeq=0;  /* #UI-1: курсор seq последнего показанного ответа прибора (/api/devlog) */
+var failStreak=0;  /* #UI-2: подряд-неудачи fetch спектра; гасим экран только после >=3 (одиночный 503 при конкуренции — не гасит) */
+var PL=65,PT=15,PW=1120,PH=340,PR=PL+PW,PB=PT+PH;
+var csrfToken="";
+var doseK=0;
+
+async function loadCsrf(){try{var r=await(await fetch("/api/csrf-token")).json();csrfToken=r.token||""}catch(e){}}
+async function loadDoseK(){try{var r=await(await fetch("/api/waterfall/dose_k")).json();doseK=(typeof r.dose_k==="number"&&r.dose_k>0)?r.dose_k:0;}catch(e){}}
+function post(url,opts){opts=opts||{};opts.method="POST";opts.headers=Object.assign({},opts.headers||{},{"X-CSRF-Token":csrfToken});return fetch(url,opts)}
+async function loadPrefix(){try{var r=await(await fetch("/api/boot-config")).json();var e=document.getElementById("fx-prefix");if(e)e.value=r.name_prefix||"";}catch(_){}}
+async function savePrefix(){var e=document.getElementById("fx-prefix"),st=document.getElementById("fx-prefix-st");if(!e)return;st.textContent="…";try{var r=await post("/api/boot-config",{headers:{"Content-Type":"application/json"},body:JSON.stringify({name_prefix:e.value})});st.textContent=r.ok?"✓":"✗";}catch(_){st.textContent="✗";}}
+
+function lg(m){if(!logEl)return;logEl.textContent+=m+"\n";logEl.scrollTop=logEl.scrollHeight}
+/* #UI-1: подтянуть текстовые ответы прибора из /api/devlog и показать их в логе команд («← ...») */
+async function pollDevLog(){try{var r=await(await fetch("/api/devlog?since="+devSeq)).json();if(r.lines&&r.lines.length){r.lines.forEach(function(e){var t=(e.text||"").replace(/\n+$/,"");lg("← "+t)})}if(typeof r.next==="number")devSeq=r.next}catch(e){}}
+function fmtTime(s){s=Math.round(s);var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return(h>0?h+"h ":"")+(m>0?m+"m ":"")+ss+"s"}
+function fmtHMS(s){var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(ss).padStart(2,"0")}
+function fmtNum(n){return Math.round(n).toLocaleString(lcl())}
+function setLog(v){isLog=v;setSeg(["btn-lin","btn-log"],v?1:0);if(lastD)draw(lastD);else clearCanvas()}
+function setCps(v){isCps=v;setSeg(["btn-cnt","btn-cps"],v?1:0);if(lastD)draw(lastD);else clearCanvas()}
+function setKev(v){isKev=v;setSeg(["btn-ch","btn-kev"],v?1:0);if(lastD)draw(lastD);else clearCanvas()}
+function setSeg(ids,onIdx){ids.forEach(function(id,i){var el=document.getElementById(id);if(!el)return;if(i===onIdx)el.classList.add("on");else el.classList.remove("on")})}
+function ch2kev(ch){if(!calib)return ch;var e=0;for(var i=0;i<calib.length;i++)e+=calib[i]*Math.pow(ch,i);return e}
+function kev2ch(kev){var lo=0,hi=8192;for(var i=0;i<30;i++){var m=(lo+hi)/2;if(ch2kev(m)<kev)lo=m;else hi=m}return(lo+hi)/2}
+function niceStep(r,n){if(r<=0)return 1;var s=r/n,e=Math.floor(Math.log10(s)),f=s/Math.pow(10,e);return(f<=1.5?1:f<=3.5?2:f<=7.5?5:10)*Math.pow(10,e)}
+function fmtY(v){if(v>=1e6)return(v/1e6).toFixed(1)+"M";if(v>=1e4)return(v/1e3).toFixed(0)+"k";if(v>=1e3)return(v/1e3).toFixed(1)+"k";if(v>0&&v<0.01)return v.toExponential(0);if(isCps)return v.toFixed(v<1?3:v<10?2:v<100?1:0);return String(Math.round(v))}
+
+function clearCanvas(){
+ X.fillStyle="#0c0f0b";X.fillRect(0,0,1200,400);
+ X.strokeStyle="#283024";X.lineWidth=1;X.strokeRect(PL+.5,PT+.5,PW,PH);
+ X.fillStyle="#4a534a";X.font="14px ui-monospace,monospace";X.textAlign="center";
+ X.fillText(tr("status.nodata"),PL+PW/2,PT+PH/2);
+ X.font="11px ui-monospace,monospace";X.fillText(isKev&&calib?tr("ax.kev"):tr("ax.ch"),PL+PW/2,PB+32);
+ X.save();X.translate(12,PT+PH/2);X.rotate(-Math.PI/2);X.textAlign="center";X.fillText(isCps?tr("ax.cps"):tr("ax.cnt"),0,0);X.restore();
+}
+
+function setDeadBanner(on){var b=document.getElementById("dead-banner");if(!b)return;if(on){b.innerHTML=tr("dead.warn");b.style.display="";}else{b.style.display="none";}}  /* #FW-43: баннер «определился, но не запитан» */
+async function update(){
+ try{
+  var r=await fetch("/api/spectrum.json");
+  if(!r.ok){setDeadBanner(r.headers.get("X-Spectrometer-Dead")==="1");if(++failStreak>=3||!lastD){clearCanvas();document.getElementById("status").textContent=tr("status.nodata");}return}  /* #UI-2: транзиентный не-2xx (напр. 503 при конкуренции сокетов) НЕ гасит последний кадр; гасим лишь после >=3 подряд. #FW-43: дед-флаг из заголовка X-Spectrometer-Dead — баннер работает даже когда спектра нет (404) */
+  var d=await r.json();
+  failStreak=0;  /* #UI-2: успешный кадр — сброс счётчика подряд-неудач */
+  if(d.calib){calib=d.calib;if(!calibEditing)fillCalibFields(d.calib);nucBtnEnable(true);} else if(!calib){nucBtnEnable(false);}
+  if(d.serial)document.getElementById("device-chip").title="S/N: "+d.serial;   // #DEV-1: текст чипа теперь статус подключения, серийник — в title
+  lastD=d;
+  setDeadBanner(!!d.dead);  /* #FW-43 */
+  var stEl=document.getElementById("status");
+  var lv=(typeof d.live==="number")?d.live:d.time;
+  var dpct=(d.time>0)?((d.time-lv)/d.time*100):0;
+  var tStr=''+d.t1;
+  if(d.t2>0)tStr+='/'+d.t2;
+  if(d.t3>0)tStr+='/'+d.t3;
+  var doseStr=(doseK>0)?(d.cps*doseK).toFixed(3):"";
+  stEl.innerHTML='<span class="ac">CPS <span>'+d.cps+'</span></span><span class="sep">|</span>'+
+   '<span class="w"><span>'+d.total.toLocaleString(lcl())+'</span> <span class="mut">'+tr("ax.cnt").toLowerCase()+'</span></span>'+
+   (doseStr?'<span class="sep">|</span><span><span class="mut">'+tr("st.dose")+'</span> <span class="ac">'+doseStr+'</span> <span class="mut">µSv/h</span></span>':'')+'<span class="sep">|</span>'+
+   '<span><span class="mut">'+tr("st.real")+'</span> '+fmtTime(d.time)+'</span><span class="sep">|</span>'+
+   '<span><span class="mut">'+tr("st.live")+'</span> '+fmtTime(lv)+'</span><span class="sep">|</span>'+
+   '<span><span class="mut">'+tr("st.dead")+'</span> '+dpct.toFixed(2)+'%</span><span class="sep">|</span>'+
+   '<span>Lost <span>'+d.lost+'</span></span><span class="sep">|</span>'+
+   '<span>T '+tStr+' &deg;C</span>';
+  document.getElementById("big-time").textContent=fmtHMS(d.time);
+  document.getElementById("big-cps").textContent=d.cps;
+  document.getElementById("big-total").textContent=d.total.toLocaleString(lcl());
+  if(doseK>0){var bigDr=(d.cps*doseK).toFixed(3);document.getElementById("big-dose").textContent=bigDr;document.getElementById("big-dose-sep").style.display="";document.getElementById("big-dose-wrap").style.display="";}else{document.getElementById("big-dose-sep").style.display="none";document.getElementById("big-dose-wrap").style.display="none";}
+  draw(d);
+ }catch(e){if(++failStreak>=3||!lastD){clearCanvas();setDeadBanner(false);document.getElementById("status").textContent=tfmt("err.prefix",e);}}  /* #UI-2: таймаут/сбой сети не гасит последний спектр; гасим лишь после >=3 подряд */
+ finally{pollDevLog();}   /* #UI-2: devlog (#UI-1) теперь ПОСЛЕ спектра, не конкурентно — устраняет лишний сокет → меньше 503 */
+}
+
+function draw(d){
+ var bins=d.bins,time=d.time,N=bins.length;
+ var tt=time>0?time:1;
+ var yV=new Array(N);
+ for(var i=0;i<N;i++)yV[i]=isCps?bins[i]/tt:bins[i];
+ var yO=null;
+ if(overlayBins){yO=new Array(overlayBins.length);for(var i=0;i<overlayBins.length;i++)yO[i]=isCps?overlayBins[i]/tt:overlayBins[i]}
+ var mx=0;
+ for(var i=0;i<N;i++)if(yV[i]>mx)mx=yV[i];
+ if(yO)for(var i=0;i<yO.length;i++)if(yO[i]>mx)mx=yO[i];
+ if(mx<=0)mx=1;
+ var yTicks=[],minExp=0,maxExp=0,yMap;
+ if(isLog){
+  /* #UI-36: масштаб как в AtomSpectra-референсе — пол=ОДИН отсчёт, верх=пик, декады = реальный
+     диапазон данных (НЕ фикс 7 — 7 декад топили спектр до 1e-7, пустой шум снизу = «ужасно»).
+     Пол «один отсчёт»: counts→10^0=1; cps→1/tt (тот же отсчёт, поделённый на время). Разница
+     minExp = -log10(tt) — чистый вертикальный сдвиг → форма cps и counts идентична (#FW-35 цел).
+     #FW-26 (пик<1 не топим) сохранён: maxExp всегда трекает пик. */
+  maxExp=Math.log10(mx)+0.15;   /* лёгкий отступ сверху, одинаков для cps/counts */
+  minExp=isCps?-Math.log10(tt):0;   /* один отсчёт: cps=1/tt, counts=1 */
+  if(minExp>=maxExp-0.5)minExp=maxExp-1;   /* гарантия ≥~1 декады при крошечном пике */
+  /* тики — целые декады в окне [minExp..maxExp]; для counts под-1 не бывает (minExp=0). */
+  for(var p=Math.ceil(minExp);p<=Math.floor(maxExp);p++)yTicks.push(Math.pow(10,p));
+  /* простой лог-линейный map [minExp..maxExp]→[PB..PT]; #UI-35 half-split убран (при поле=1 суб-декад у counts нет, для cps сдвиг сохраняет identity). */
+  yMap=function(v){if(v<=0)return PB;var lv=Math.log10(v);if(lv<=minExp)return PB;if(lv>=maxExp)return PT;return PB-((lv-minExp)/(maxExp-minExp))*PH;};
+ }else{
+  yMap=function(v){return PB-(v/mx)*PH};
+  var ys=niceStep(mx,6);for(var v=0;v<=mx*1.01;v+=ys)yTicks.push(v);
+ }
+ var xTicks=[];
+ if(isKev&&calib){var mk=ch2kev(N-1);var ks=niceStep(mk,8);for(var k=0;k<=mk*1.01;k+=ks){var c=kev2ch(k);var x=PL+(c/N)*PW;if(x>=PL&&x<=PR)xTicks.push({x:x,l:k.toFixed(0)})}}
+ else{var cs=niceStep(N,8);for(var c=0;c<=N;c+=cs){var x=PL+(c/N)*PW;if(x>=PL&&x<=PR)xTicks.push({x:x,l:String(Math.round(c))})}}
+ X.fillStyle="#0c0f0b";X.fillRect(0,0,1200,400);
+ X.strokeStyle="rgba(255,255,255,.05)";X.lineWidth=1;
+ for(var i=0;i<yTicks.length;i++){var y=yMap(yTicks[i]);if(y>=PT&&y<=PB){X.beginPath();X.moveTo(PL,y);X.lineTo(PR,y);X.stroke()}}
+ for(var i=0;i<xTicks.length;i++){X.beginPath();X.moveTo(xTicks[i].x,PT);X.lineTo(xTicks[i].x,PB);X.stroke()}
+ X.save();X.beginPath();X.rect(PL,PT,PW,PH);X.clip();
+ var bw=PW/N;
+ var accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';
+ if(yO){X.fillStyle="rgba(110,168,255,0.28)";for(var i=0;i<yO.length;i++){var y=yMap(yO[i]);if(PB-y>0.3)X.fillRect(PL+i*bw,y,Math.max(bw-.3,.3),PB-y)}}
+ /* #UI-36: лёгкая заливка (alpha 0x1e ≈ 0.12) + чёткая линия сверху — как в AtomSpectra-референсе.
+    Раньше accent+"44" (~0.27) сплошными столбцами = тяжёлая «плита», топила форму спектра. */
+ X.fillStyle=accent+"1e";
+ for(var i=0;i<N;i++){var y=yMap(yV[i]);if(PB-y>0.3)X.fillRect(PL+i*bw,y,Math.max(bw-.3,.3),PB-y)}
+ X.strokeStyle=accent;X.lineWidth=1;X.beginPath();
+ for(var i=0;i<N;i++){var px=PL+i*bw+bw/2,py=yMap(yV[i]);i===0?X.moveTo(px,py):X.lineTo(px,py)}
+ X.stroke();
+ if(yO){X.strokeStyle="#6ea8ff";X.lineWidth=1.1;X.setLineDash([5,4]);X.beginPath();for(var i=0;i<yO.length;i++){var px=PL+i*bw+bw/2,py=yMap(yO[i]);i===0?X.moveTo(px,py):X.lineTo(px,py)}X.stroke();X.setLineDash([])}
+ X.restore();
+ drawNuclides(N);
+ X.strokeStyle="#283024";X.lineWidth=1;X.strokeRect(PL+.5,PT+.5,PW,PH);
+ X.fillStyle="#5a645a";X.font="11px ui-monospace,monospace";X.textAlign="right";
+ for(var i=0;i<yTicks.length;i++){var y=yMap(yTicks[i]);if(y>=PT&&y<=PB)X.fillText(fmtY(yTicks[i]),PL-6,y+4)}
+ X.textAlign="center";
+ for(var i=0;i<xTicks.length;i++){X.strokeStyle="#283024";X.beginPath();X.moveTo(xTicks[i].x,PB);X.lineTo(xTicks[i].x,PB+5);X.stroke();X.fillStyle="#6b756a";X.fillText(xTicks[i].l,xTicks[i].x,PB+16)}
+ X.fillStyle="#4a534a";X.fillText(isKev&&calib?tr("ax.kev"):tr("ax.ch"),PL+PW/2,PB+32);
+ X.save();X.translate(12,PT+PH/2);X.rotate(-Math.PI/2);X.textAlign="center";X.fillText(isCps?tr("ax.cps"):tr("ax.cnt"),0,0);X.restore();
+}
+
+function drawCursor(){
+ Xcur.clearRect(0,0,1200,400);
+ if(cursorCh<0||!lastD)return;
+ var N=lastD.bins.length; if(N<=0)return;
+ var bw=PW/N;
+ var x=PL+(cursorCh+0.5)*bw;
+ if(x<PL||x>PR)return;
+ var accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';
+ Xcur.strokeStyle=accent; Xcur.lineWidth=1;
+ Xcur.setLineDash([4,3]);
+ Xcur.beginPath(); Xcur.moveTo(x+.5,PT); Xcur.lineTo(x+.5,PB); Xcur.stroke();
+ Xcur.setLineDash([]);
+}
+C.addEventListener("mousemove",function(e){
+ if(!lastD)return;
+ var rect=C.getBoundingClientRect();
+ var mx=(e.clientX-rect.left)*(1200/rect.width);
+ var my=(e.clientY-rect.top)*(400/rect.height);
+ var info=document.getElementById("cursor-info");
+ if(mx<PL||mx>PR||my<PT||my>PB){info.style.color="#5b655a";info.textContent=tr("cursor.hint");if(cursorCh!==-1){cursorCh=-1;drawCursor();}return}
+ var ch=Math.floor((mx-PL)/PW*lastD.bins.length);
+ if(ch<0||ch>=lastD.bins.length){info.style.color="#5b655a";info.textContent=tr("cursor.hint");if(cursorCh!==-1){cursorCh=-1;drawCursor();}return}
+ var cnt=lastD.bins[ch];
+ var s="ch "+ch;
+ if(calib)s+=" &middot; "+ch2kev(ch).toFixed(1)+" "+tr("cur.kev");
+ s+="<br><span style='color:#aeb6a8'>"+cnt+" "+tr("cur.cnt");
+ if(lastD.time>0)s+=" &middot; "+(cnt/lastD.time).toFixed(2)+" CPS";
+ s+="</span>";
+ info.style.color=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';
+ info.innerHTML=s;
+ if(ch!==cursorCh){cursorCh=ch;drawCursor();}
+});
+C.addEventListener("mouseleave",function(){var i=document.getElementById("cursor-info");i.style.color="#5b655a";i.textContent=tr("cursor.hint");if(cursorCh!==-1){cursorCh=-1;drawCursor();}});
+
+function refreshCalibStatus(){
+ var s=document.getElementById("calib-status");
+ if(!s)return;
+ if(calib){s.textContent=tr("cal.set");s.style.color="var(--accent)";s.style.borderColor="rgba(52,211,192,.35)";}
+ else{s.textContent=tr("cal.unset");s.style.color="#5b655a";s.style.borderColor="#2a322a";}
+}
+function fillCalibFields(cal){
+ document.getElementById("cal-e").value=cal[0]||0;
+ document.getElementById("cal-d").value=cal[1]||0;
+ document.getElementById("cal-c").value=cal[2]||0;
+ document.getElementById("cal-b").value=cal[3]||0;
+ document.getElementById("cal-a").value=cal[4]||0;
+ refreshCalibStatus();
+}
+async function applyCalib(){
+ var e=parseFloat(document.getElementById("cal-e").value)||0;
+ var d=parseFloat(document.getElementById("cal-d").value)||0;
+ var c=parseFloat(document.getElementById("cal-c").value)||0;
+ var b=parseFloat(document.getElementById("cal-b").value)||0;
+ var a=parseFloat(document.getElementById("cal-a").value)||0;
+ var coeffs=[e,d,c,b,a];
+ try{
+  var r=await post("/api/calibration",{headers:{"Content-Type":"application/json"},body:JSON.stringify({coeffs:coeffs})});
+  if(r.ok){calibEditing=false;calib=coeffs;var s=document.getElementById("calib-status");s.textContent=tr("cal.applied");s.style.color="var(--accent)";lg(tfmt("log.cal",coeffs.join(", ")));nucBtnEnable(true);if(lastD)draw(lastD)}
+  else{var s2=document.getElementById("calib-status");s2.textContent=tr("cal.error");s2.style.color="#ff8a82"}
+ }catch(err){lg(tfmt("log.calErr",err))}
+}
+function clearCalib(){
+ calibEditing=true;calib=null;
+ ["cal-a","cal-b","cal-c","cal-d","cal-e"].forEach(function(id){document.getElementById(id).value=""});
+ refreshCalibStatus();
+ nucBtnEnable(false);
+ if(isKev)setKev(false);else if(lastD)draw(lastD);
+ lg(tr("log.calClear"));
+}
+async function loadFlashInfo(){
+ try{
+  var r=await(await fetch("/api/system")).json();
+  var total=r.flash_total||0,used=r.flash_used||0,free=total-used;
+  var sd=!!(r.saved_on_sd&&r.sd_total);   /* #SD-4: сохранённые спектры на SD-карте — показываем её */
+  if(sd){total=r.sd_total;free=r.sd_free||0;used=total-free;}
+  var pct=total>0?((used/total)*100).toFixed(1):0;
+  document.getElementById("flash-label").textContent=tr(sd?"flash.labelSd":"flash.label");
+  document.getElementById("flash-text").innerHTML=sd
+   ?tfmt("flash.fmtSd",(used/1048576).toFixed(0),(total/1048576).toFixed(0),pct,(free/1048576).toFixed(0))
+   :tfmt("flash.fmt",(used/1024).toFixed(0),(total/1024).toFixed(0),pct,(free/1024).toFixed(0));
+  var fi=document.getElementById("flash-inner");
+  fi.style.width=pct+"%";
+  fi.style.background=pct>90?"#ff8a82":pct>70?"#f0c45a":"var(--accent)";
+  // #DEV-1 (debug fix): статус спектрометра в шапке — раньше не обновлялся вовсе
+  // на этой странице (чип был статичным "Прибор"/serial без реального состояния
+  // подключения). r.usb_connected — тот же авторитетный флаг, что и на
+  // страницах Сервис/Система.
+  var devChip=document.getElementById("dev-chip"), devDot=document.getElementById("dev-dot"), devStat=document.getElementById("device-chip");
+  if(devChip&&devDot&&devStat){
+   devChip.style.visibility="";   // #DEV-2: убираем "мигание" плейсхолдера — раскрываем чип только когда знаем реальный статус
+   if(r.usb_connected){
+    devDot.classList.remove("off"); devStat.textContent=tr("dev.chipOk");
+    devChip.classList.remove("warn"); devChip.classList.add("ok");
+   }else{
+    devDot.classList.add("off"); devStat.textContent=tr("dev.chipOff");
+    devChip.classList.add("warn"); devChip.classList.remove("ok");
+   }
+  }
+  // #PWR-1: значок батареи cg-bq-1v0 — показываем только если плата реально обнаружена по I2C
+  var bc=document.getElementById("batt-chip");
+  if(bc){
+   if(r.batt_present){
+    bc.style.display="";
+    var bpct=(typeof r.batt_percent==="number")?Math.max(0,Math.min(100,Math.round(r.batt_percent))):0;
+    var fillEl=document.getElementById("batt-fill");
+    if(fillEl){fillEl.style.width=bpct+"%";fillEl.style.background=bpct<20?"#ff8a82":bpct<50?"#f0c45a":"var(--accent)";}
+    var pctEl=document.getElementById("batt-pct");
+    if(pctEl)pctEl.textContent=(r.batt_charging?"\u26a1":"")+bpct+"%";
+    var statusTxt=r.batt_charging?tr("batt.charging"):r.batt_chg_done?tr("batt.full"):(r.batt_vbus?"":tr("batt.onBattery"));
+    bc.title=tr("batt.title")+": "+(typeof r.batt_voltage==="number"?r.batt_voltage.toFixed(2)+"V":"")+(statusTxt?" \u00b7 "+statusTxt:"");
+   } else {
+    bc.style.display="none";
+   }
+  }
+ }catch(e){}
+}
+async function loadOverlay(idx){
+ try{var r=await(await fetch("/api/saved/"+idx+"/spectrum.json")).json();overlayBins=r.bins;overlayIdx=idx;
+ document.getElementById("overlay-label").textContent="Overlay: #"+idx;document.getElementById("btn-clear-ovl").style.display="";
+ lg(tfmt("log.ovlOk",idx));if(lastD)draw(lastD);loadSaved();}catch(e){lg(tfmt("log.ovlErr",e))}
+}
+function clearOverlay(){overlayBins=null;overlayIdx=-1;document.getElementById("overlay-label").textContent="";document.getElementById("btn-clear-ovl").style.display="none";lg(tr("log.ovlClear"));if(lastD)draw(lastD);loadSaved();}
+async function loadSaved(retry){
+ var el=document.getElementById("saved");
+ try{
+  var resp=await fetch("/api/list",{cache:"no-store"});
+  var txt=await resp.text();
+  if(!resp.ok||!txt){throw new Error("empty /api/list");}  /* #FW-37: после F5 httpd отдаёт пустое тело (гонка при перезагрузке) → .json() падал SyntaxError */
+  var r=JSON.parse(txt);
+  if(!r.spectra||r.spectra.length===0){el.innerHTML='<span class="empty">'+tr("saved.empty")+'</span>';return}
+  var html='<table class="saved"><tr><th>'+tr("th.idx")+'</th><th>'+tr("th.saved")+'</th><th>'+tr("th.counts")+'</th><th>'+tr("th.time")+'</th><th>'+tr("th.export")+'</th><th></th></tr>';
+  for(var i=0;i<r.spectra.length;i++){
+   var s=r.spectra[i];var dt=s.saved_at>0?new Date(s.saved_at*1000).toLocaleString(lcl()):'—';
+   var onCls=s.index===overlayIdx?' class="on"':'';
+   html+='<tr'+onCls+'><td>'+s.index+'</td><td>'+dt+'</td><td>'+s.counts.toLocaleString(lcl())+'</td><td>'+fmtTime(s.time)+'</td>'+
+    '<td><a href="/api/saved/'+s.index+'/export.xml" style="color:var(--accent)">XML</a> &middot; <a href="/api/saved/'+s.index+'/export.csv" style="color:var(--accent)">CSV</a></td>'+
+    '<td><button class="btn sm" onclick="loadOverlay('+s.index+')">'+tr("btn.overlay")+'</button> <button class="btn sm red" onclick="delSaved('+s.index+')">'+tr("btn.del")+'</button></td></tr>';
+  }
+  el.innerHTML=html+'</table>';
+ }catch(e){
+  if(!retry){ setTimeout(function(){loadSaved(true);},800); return; }  /* #FW-37: один тихий retry на гонку после F5 */
+  if(!el.querySelector("table")) el.innerHTML='<span class="empty">'+tfmt("err.prefix",e)+'</span>';  /* не затираем уже показанный список */
+ }
+}
+async function delSaved(idx){if(!confirm(tfmt("confirm.del",idx)))return;await post("/api/saved/"+idx+"/delete");lg(tfmt("log.del",idx));if(overlayIdx===idx)clearOverlay();loadSaved();loadFlashInfo()}
+async function startAcq(){await post("/api/command",{body:"-sta"});lg(tr("log.start"))}
+async function stopAcq(){await post("/api/command",{body:"-sto"});lg(tr("log.stop"))}
+async function resetSpectrum(){clearCanvas();lastD=null;document.getElementById("big-time").textContent="00:00:00";document.getElementById("big-cps").textContent="0";document.getElementById("big-total").textContent="0";await post("/api/reset");lg(tr("log.reset"))}
+async function saveSpectrum(){var r=await(await post("/api/save")).json();
+ if(r.ok){lg(tfmt("saved.savedAs",r.index)+(r.storage==="sd"?tr("saved.onSd"):tr("saved.onFlash")));   /* #SD-4 */loadSaved();loadFlashInfo();return}  /* #SD-3 */
+ var k=r.err==="novalid"?"saved.saveErrNoData":r.err==="nospace"?"saved.saveErrNoSpace":r.err==="nosd"?"saved.saveErrNoSd":"saved.saveErr";   /* #SD-5 */
+ lg(tr(k));}
+async function requestInfo(){calibEditing=false;await post("/api/command",{body:"-inf"});await post("/api/command",{body:"-cal"});lg(tr("log.info"));setTimeout(update,800);setTimeout(pollDevLog,600);setTimeout(pollDevLog,1500)}  /* #UI-1: быстро подхватить ответы -inf/-cal */
+async function rebootDevice(){if(!confirm(tr("confirm.rebootDev")))return;await post("/api/reboot-device");lg(tr("log.rebootDev"))}
+async function rebootEsp(){if(!confirm(tr("confirm.rebootEsp")))return;await post("/api/reboot-esp");document.getElementById("status").textContent=tr("status.rebooting")}
+async function resetWifi(){if(!confirm(tr("confirm.wifiReset")))return;await post("/api/wifi/reset");document.getElementById("status").textContent=tr("status.wifiSetup")}
+["cal-a","cal-b","cal-c","cal-d","cal-e"].forEach(function(id){document.getElementById(id).addEventListener("focus",function(){calibEditing=true})});
+
+document.getElementById("cal-head").onclick=function(){
+ var b=document.getElementById("cal-body");
+ var open=b.style.display==="none";
+ b.style.display=open?"block":"none";
+ document.getElementById("cal-arrow").textContent=open?"▼":"▶";
+};
+
+async function initCalib(){
+ try{var r=await(await fetch("/api/device")).json();
+ if(r.calibration){calib=r.calibration;if(!calibEditing)fillCalibFields(r.calibration);nucBtnEnable(true);}
+ if(r.serial){document.getElementById("device-chip").title="S/N: "+r.serial}}catch(e){}   // #DEV-1: текст чипа теперь статус подключения, серийник — в title
+}
+
+applyI18n();
+document.getElementById("langBtn").onclick=function(){setLang(LANG==="ru"?"en":"ru");};
+
+/* #UI-3: оверлей энергетических линий нуклидов */
+var NUCLIDES=[
+ {id:"k40",   name:"K-40",   color:"#f0c45a", lines:[1460.8]},
+ {id:"cs137", name:"Cs-137", color:"#ff8a82", lines:[661.7]},
+ {id:"co60",  name:"Co-60",  color:"#7ed4ff", lines:[1173.2,1332.5]},
+ {id:"ra226", name:"Ra-226", color:"#ff9a55", lines:[186.2,242.0,295.2,351.9,609.3,1120.3,1764.5]},
+ {id:"th232", name:"Th-232", color:"#9ad17a", lines:[238.6,338.3,583.2,911.2,968.9,2614.5]},
+ {id:"am241", name:"Am-241", color:"#ff6ec0", lines:[59.5]},
+ {id:"na22",  name:"Na-22",  color:"#6ea8ff", lines:[511.0,1274.5]},
+ {id:"i131",  name:"I-131",  color:"#5fe7c3", lines:[364.5]},
+ {id:"mn54",  name:"Mn-54",  color:"#d0d36a", lines:[834.8]},
+ {id:"ann",   name:"e⁺/e⁻ 511", color:"#8a9686", lines:[511.0]}
+];
+var nucShow=(function(){
+ try{var raw=localStorage.getItem("aswf-nuc");if(raw){var o=JSON.parse(raw);if(o&&typeof o==="object")return o;}}catch(e){}
+ /* #DEMO-4: показываем основные опорные линии сразу (а не пустой оверлей),
+    чтобы пики были подписаны «из коробки». Пользователь может снять любые. */
+ return {k40:true,cs137:true,co60:true};
+})();
+function nucSave(){try{localStorage.setItem("aswf-nuc",JSON.stringify(nucShow));}catch(e){}}
+var nucVis=(function(){try{return localStorage.getItem("aswf-nuc-vis")!=="0";}catch(e){return true;}})();   /* #UI-40 mirror: быстрый on/off видимости линий, отдельно от выбора aswf-nuc (общий ключ с водопадом) */
+function syncNucVisBtn(){var b=document.getElementById("btn-nuc-vis");if(!b)return;b.textContent=tr("btn.lines")+": "+(nucVis?tr("st.on"):tr("st.off"));b.title=tr("btn.lines_title");b.style.opacity=nucVis?"":"0.6";}
+function toggleNucVis(){nucVis=!nucVis;try{localStorage.setItem("aswf-nuc-vis",nucVis?"1":"0");}catch(e){}syncNucVisBtn();if(lastD)draw(lastD);}
+syncNucVisBtn();   /* #UI-41: nucVis присваивается здесь (ниже applyI18n@557, где nucVis ещё undefined) — синхр. подпись кнопки на старте */
+function setNuc(id,v){nucShow[id]=!!v;nucSave();if(lastD)draw(lastD);}
+function nucAll(v){for(var i=0;i<NUCLIDES.length;i++){nucShow[NUCLIDES[i].id]=!!v;var cb=document.getElementById("nuc-cb-"+NUCLIDES[i].id);if(cb)cb.checked=!!v;}nucSave();if(lastD)draw(lastD);}
+function populateNucPanel(){
+ var p=document.getElementById("nuc-panel");if(!p)return;
+ var h='<div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px">'+tr("nuc.title")+'</div>';
+ h+='<div style="display:flex;gap:6px;margin-bottom:6px"><button class="btn sm" onclick="nucAll(true)">'+tr("nuc.all")+'</button><button class="btn sm" onclick="nucAll(false)">'+tr("nuc.none")+'</button></div>';
+ h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:11.5px;max-height:260px;overflow:auto">';
+ for(var i=0;i<NUCLIDES.length;i++){
+  var n=NUCLIDES[i];var chk=nucShow[n.id]?" checked":"";
+  h+='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#cfd6cd">'+
+     '<input type="checkbox" id="nuc-cb-'+n.id+'"'+chk+' onchange="setNuc(\''+n.id+'\',this.checked)">'+
+     '<span style="display:inline-block;width:10px;height:3px;background:'+n.color+';border-radius:1px"></span>'+
+     '<span>'+n.name+'</span></label>';
+ }
+ h+='</div>';
+ p.innerHTML=h;
+}
+function toggleNucPanel(){
+ var b=document.getElementById("btn-nuc");if(b.disabled)return;
+ var p=document.getElementById("nuc-panel");
+ p.style.display=(p.style.display==="none"||!p.style.display)?"block":"none";
+}
+function nucBtnEnable(on){
+ var b=document.getElementById("btn-nuc");if(!b)return;
+ b.disabled=!on;b.style.opacity=on?"1":".5";
+ b.title=on?"":tr("nuc.need_cal");
+ if(!on){var p=document.getElementById("nuc-panel");if(p)p.style.display="none";}
+}
+function drawNuclides(N){
+ if(!calib||!lastD||!nucVis)return;   // #UI-40 mirror: быстрый on/off, выбор (aswf-nuc) не меняется
+ var any=false;for(var k in nucShow){if(nucShow[k]){any=true;break;}}
+ if(!any)return;
+ X.save();X.beginPath();X.rect(PL,PT,PW,PH);X.clip();
+ X.font="10.5px ui-monospace,monospace";X.textBaseline="bottom";
+ for(var i=0;i<NUCLIDES.length;i++){
+  var n=NUCLIDES[i];if(!nucShow[n.id])continue;
+  for(var j=0;j<n.lines.length;j++){
+   var keV=n.lines[j];
+   var c=kev2ch(keV);
+   if(c<0||c>=N)continue;
+   var x=PL+(c+0.5)*(PW/N);
+   if(x<PL||x>PR)continue;
+   X.strokeStyle=n.color;X.lineWidth=1;X.setLineDash([4,3]);
+   X.beginPath();X.moveTo(x+.5,PT);X.lineTo(x+.5,PB);X.stroke();
+   X.setLineDash([]);
+   X.fillStyle=n.color;X.textAlign="left";
+   var lbl=n.name+" "+keV.toFixed(1);
+   var tw=X.measureText(lbl).width;
+   var tx=(x+tw+4>PR)?(x-tw-4):(x+3);
+   X.fillText(lbl,tx,PT+12+(j%3)*12);
+  }
+ }
+ X.restore();
+}
+
+(async function(){
+ await loadCsrf();
+ await loadDoseK();
+ loadPrefix();
+ populateNucPanel();
+ setInterval(update,2000);   /* #UI-15: 1000→2000ms — chunked /api/spectrum.json ел сокеты при F5; макс. uri_handlers=11 */
+ setInterval(loadFlashInfo,10000);
+ loadFlashInfo();   // #FIELD-6: сразу показать режим Indoor/Outdoor в шапке
+ clearCanvas();
+ initCalib();
+ update();
+ loadSaved();
+ loadFlashInfo();
+})();
+</script>
+<style>
+.zoom-overlay{position:fixed;inset:0;background:#000;z-index:9999;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.zoom-overlay canvas{touch-action:none;cursor:grab;background:#000;display:block}
+.zoom-overlay.dragging canvas{cursor:grabbing}
+.zoom-overlay .zo-x{position:absolute;top:14px;right:14px;background:rgba(20,24,18,.85);color:#cfd6cd;border:1px solid #2b3327;border-radius:8px;padding:8px 14px;font:600 16px system-ui;cursor:pointer;z-index:2}
+.zoom-overlay .zo-x:hover{border-color:#34d3c0;color:#34d3c0}
+.zoom-overlay .zo-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(20,24,18,.7);color:#8a9686;border:1px solid #20281e;border-radius:8px;padding:6px 12px;font:12px system-ui;pointer-events:none;white-space:nowrap}
+#sp{cursor:zoom-in!important}
+</style>
+<script>
+(function(){
+if(window.openZoomOverlay)return;
+window.openZoomOverlay=function(sourcesFn,opts){
+ opts=opts||{};
+ var ov=document.createElement("div");ov.className="zoom-overlay";
+ var cv=document.createElement("canvas");
+ var btn=document.createElement("button");btn.className="zo-x";btn.textContent="✕";
+ var hint=document.createElement("div");hint.className="zo-hint";
+ hint.textContent=(window.LANG==="en")?"wheel / pinch = zoom · drag = pan · dblclick = reset · Esc = close":"колесо / щипок = зум · drag = pan · 2× клик = сброс · Esc = выход";
+ ov.appendChild(cv);ov.appendChild(btn);ov.appendChild(hint);
+ document.body.appendChild(ov);
+ var prevOvf=document.body.style.overflow;document.body.style.overflow="hidden"; /* #UI-24: лок прокрутки фона */
+ var zoom=1,panX=0,panY=0,W=0,H=0,raf=0,closed=false;
+ /* #UI-19: живой маркер курсора в оверлее */
+ var mouse={x:0,y:0,inside:false};
+ var cmap=null; /* {x0,w} первого источника в T-space (CSS px) для readout */
+ function resize(){W=ov.clientWidth;H=ov.clientHeight;var dpr=window.devicePixelRatio||1;cv.style.width=W+"px";cv.style.height=H+"px";cv.width=Math.floor(W*dpr);cv.height=Math.floor(H*dpr);}
+ resize();window.addEventListener("resize",resize);
+ function render(){
+  if(closed)return;
+  var srcs=sourcesFn();
+  var ctx=cv.getContext("2d");
+  var dpr=window.devicePixelRatio||1;
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000";ctx.fillRect(0,0,cv.width,cv.height);
+  cmap=null;
+  var pclip=null; /* #UI-22: экранные границы панели по вертикали (для обрезки курсора) */
+  if(srcs&&srcs.length){
+   /* #UI-20: все источники одной display-шириной Wd → выровнены по оси каналов.
+      Высота каждого по собственному аспекту; supersample (#UI-18) сохраняется (downscale=чётко). */
+   var ratios=srcs.map(function(s){return s.canvas.height/s.canvas.width;});
+   var sumR=ratios.reduce(function(a,b){return a+b;},0);
+   /* #UI-23: fill — растягиваем на весь вьюпорт по ширине и высоте (аспект не сохраняем).
+      hScale делит totH между источниками пропорционально их аспектам. */
+   var Wd=0.98*W;
+   var totH=0.96*H;
+   var hScale=totH/sumR;
+   var ox=(W-Wd)/2,oy0=(H-totH)/2;
+   /* #UI-24: контент закреплён — pan не выпускает панель за края; на fit-зуме строго по центру. */
+   var L0=(ox-W/2)*zoom+W/2, R0=(ox+Wd-W/2)*zoom+W/2;
+   if(Wd*zoom>=W) panX=Math.min(-L0,Math.max(W-R0,panX)); else panX=(W-Wd*zoom)/2-L0;
+   var T0=(oy0-H/2)*zoom+H/2, B0=(oy0+totH-H/2)*zoom+H/2;
+   if(totH*zoom>=H) panY=Math.min(-T0,Math.max(H-B0,panY)); else panY=(H-totH*zoom)/2-T0;
+   /* #UI-22/#UI-26: экранные границы панели по обеим осям через pan/zoom */
+   pclip={top:T0+panY, bot:B0+panY, left:L0+panX, right:R0+panX};
+   ctx.setTransform(dpr,0,0,dpr,0,0);
+   ctx.imageSmoothingEnabled=false; /* #UI-28: без интерполяции — чётко, без размытия */
+   ctx.translate(W/2+panX,H/2+panY);ctx.scale(zoom,zoom);ctx.translate(-W/2,-H/2);
+   var dy=oy0;
+   srcs.forEach(function(s,i){
+    var h=ratios[i]*hScale;
+    ctx.drawImage(s.canvas,ox,dy,Wd,h);
+    if(i===0)cmap={x0:ox,w:Wd,y0:dy,h:h}; /* #UI-29: + вертикаль панели для fracY */
+    dy+=h;
+   });
+  }
+  /* #UI-19: вертикальный маркер курсора (screen-space CSS px) + readout */
+  if(mouse.inside){
+   ctx.setTransform(dpr,0,0,dpr,0,0);
+   ctx.strokeStyle="#34d3c0";ctx.lineWidth=1;ctx.setLineDash([5,4]);
+   /* #UI-22: линия курсора обрезана по рамке панели, не на всю высоту канваса */
+   var ly0=pclip?Math.max(0,pclip.top):0, ly1=pclip?Math.min(H,pclip.bot):H;
+   if(ly1>ly0){ctx.beginPath();ctx.moveTo(mouse.x+0.5,ly0);ctx.lineTo(mouse.x+0.5,ly1);ctx.stroke();}
+   /* #UI-26: горизонтальная линия курсора (перекрестье), обрезана по рамке панели */
+   var lx0=pclip?Math.max(0,pclip.left):0, lx1=pclip?Math.min(W,pclip.right):W;
+   if(lx1>lx0){ctx.beginPath();ctx.moveTo(lx0,mouse.y+0.5);ctx.lineTo(lx1,mouse.y+0.5);ctx.stroke();}
+   ctx.setLineDash([]);
+   if(opts.readout&&cmap){
+    /* #UI-29: значения (cps/E/время) у перекрестья — multi-line бокс рядом с курсором */
+    var Tx=(mouse.x-W/2-panX)/zoom+W/2, Ty=(mouse.y-H/2-panY)/zoom+H/2;
+    var fracX=(Tx-cmap.x0)/cmap.w, fracY=(Ty-cmap.y0)/cmap.h;
+    var lbl=(fracX>=0&&fracX<=1)?opts.readout(fracX,fracY):null;
+    if(lbl){
+     ctx.font="600 13px ui-monospace,monospace";
+     var lines=(""+lbl).split("\n");
+     var lh=17,padX=7,padY=5,tw=0;
+     for(var qi=0;qi<lines.length;qi++){var qw=ctx.measureText(lines[qi]).width;if(qw>tw)tw=qw;}
+     var bw=tw+padX*2,bh=lines.length*lh+padY*2;
+     var bx=mouse.x+16;if(bx+bw>W-4)bx=mouse.x-16-bw;if(bx<4)bx=4;
+     var by=mouse.y+16;if(by+bh>H-4)by=mouse.y-16-bh;if(by<4)by=4;
+     ctx.fillStyle="rgba(10,14,9,.88)";ctx.fillRect(bx,by,bw,bh);
+     ctx.fillStyle="#34d3c0";ctx.textBaseline="top";ctx.textAlign="left";
+     for(var qi2=0;qi2<lines.length;qi2++)ctx.fillText(lines[qi2],bx+padX,by+padY+qi2*lh);
+    }
+   }
+  }
+  raf=requestAnimationFrame(render);
+ }
+ raf=requestAnimationFrame(render);
+ function close(){if(closed)return;closed=true;cancelAnimationFrame(raf);window.removeEventListener("keydown",onKey);window.removeEventListener("resize",resize);document.body.style.overflow=prevOvf;if(ov.parentNode)ov.parentNode.removeChild(ov);}
+ function onKey(e){if(e.key==="Escape")close();}
+ window.addEventListener("keydown",onKey);
+ btn.addEventListener("click",close);
+ cv.addEventListener("dblclick",function(){zoom=1;panX=0;panY=0;});
+ cv.addEventListener("mousemove",function(e){var r=cv.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;});
+ cv.addEventListener("mouseleave",function(){mouse.inside=false;});
+ cv.addEventListener("wheel",function(e){
+  e.preventDefault();
+  var rect=cv.getBoundingClientRect();
+  var cx=e.clientX-rect.left-W/2,cy=e.clientY-rect.top-H/2;
+  var f=e.deltaY<0?1.15:1/1.15;
+  var nz=Math.max(1,Math.min(60,zoom*f)); /* #UI-25: не меньше fit (вписанного окна) */
+  panX=cx-(cx-panX)*nz/zoom;panY=cy-(cy-panY)*nz/zoom;zoom=nz;
+ },{passive:false});
+ var drag=null;
+ cv.addEventListener("pointerdown",function(e){if(e.pointerType==="touch")return;try{cv.setPointerCapture(e.pointerId);}catch(_){}drag={x:e.clientX,y:e.clientY,px:panX,py:panY};ov.classList.add("dragging");});
+ cv.addEventListener("pointermove",function(e){if(!drag)return;panX=drag.px+(e.clientX-drag.x);panY=drag.py+(e.clientY-drag.y);});
+ cv.addEventListener("pointerup",function(e){drag=null;ov.classList.remove("dragging");try{cv.releasePointerCapture(e.pointerId);}catch(_){}});
+ var pinch=null,tdrag=null;
+ cv.addEventListener("touchstart",function(e){
+  if(e.touches.length===2){
+   tdrag=null;
+   var t1=e.touches[0],t2=e.touches[1];
+   var dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
+   pinch={d:Math.hypot(dx,dy),zoom:zoom,cx:(t1.clientX+t2.clientX)/2,cy:(t1.clientY+t2.clientY)/2,panX:panX,panY:panY};
+  }else if(e.touches.length===1){
+   tdrag={x:e.touches[0].clientX,y:e.touches[0].clientY,px:panX,py:panY};
+  }
+ },{passive:true});
+ cv.addEventListener("touchmove",function(e){
+  if(e.touches.length===2&&pinch){
+   e.preventDefault();
+   var t1=e.touches[0],t2=e.touches[1];
+   var dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
+   var d=Math.hypot(dx,dy);
+   var f=d/Math.max(1,pinch.d);
+   var nz=Math.max(1,Math.min(60,pinch.zoom*f)); /* #UI-25: не меньше fit */
+   var rect=cv.getBoundingClientRect();
+   var cx=pinch.cx-rect.left-W/2,cy=pinch.cy-rect.top-H/2;
+   panX=cx-(cx-pinch.panX)*nz/pinch.zoom;panY=cy-(cy-pinch.panY)*nz/pinch.zoom;zoom=nz;
+  }else if(e.touches.length===1&&tdrag){
+   e.preventDefault();
+   panX=tdrag.px+(e.touches[0].clientX-tdrag.x);
+   panY=tdrag.py+(e.touches[0].clientY-tdrag.y);
+  }
+ },{passive:false});
+ cv.addEventListener("touchend",function(e){if(e.touches.length<2)pinch=null;if(e.touches.length<1)tdrag=null;});
+ return {close:close};
+};
+})();
+(function(){
+ var sp=document.getElementById("sp");
+ if(!sp)return;
+ function compose(a,b){var c=document.createElement("canvas");c.width=a.width;c.height=a.height;var cx=c.getContext("2d");cx.drawImage(a,0,0);if(b)cx.drawImage(b,0,0,a.width,a.height);return c;}
+ sp.addEventListener("click",function(){
+  if(typeof lastD!=="undefined"&&!lastD)return;
+  var sc=document.getElementById("spcur");
+  window.openZoomOverlay(function(){return [{canvas:sc?compose(sp,sc):sp}];},{
+   /* #UI-19: frac [0..1] по ширине источника → логический канвас 1200 (PL=65,PW=1120) → канал/кэВ/отсчёты */
+   readout:function(frac){
+    if(typeof lastD==="undefined"||!lastD||!lastD.bins||!lastD.bins.length)return null;
+    var cx=frac*1200; if(cx<PL||cx>PR)return null;
+    var N=lastD.bins.length;
+    var ch=Math.floor((cx-PL)/PW*N); if(ch<0||ch>=N)return null;
+    /* #UI-29: cps (отсчёты/время), E (энергия канала), t (время набора) */
+    var cnt=lastD.bins[ch];
+    var cps=(lastD.time>0)?(cnt/lastD.time):0;
+    var eStr=calib?(ch2kev(ch).toFixed(1)+" "+tr("cur.kev")):("ch "+ch);
+    return "CPS "+cps.toFixed(2)+"\nE "+eStr+"\nt "+fmtTime(lastD.time);
+   }
+  });
+ });
+})();
+</script>
+<script src="/common-time.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AtomSpectra — вход</title>
+<style>
+  /* #FIELD-10/#FIELD-11: лёгкая captive-landing. Грузится в мини-браузере ОС
+     (Android «Вход в сеть» / iOS CNA), где тяжёлый index может не догрузиться.
+     Всё инлайн, без внешних шрифтов/скриптов — рендерится всегда. */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(120% 90% at 50% 0%,#243530 0%,#1a2723 55%,#151e1b 100%);
+    color:#eef6f2;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;display:flex;align-items:center;justify-content:center;
+    padding:24px;text-align:center;line-height:1.4}
+  .card{width:100%;max-width:420px}
+  .logo{font-size:15px;letter-spacing:.28em;color:#6fe0be;text-transform:uppercase;margin-bottom:6px}
+  h1{font-size:22px;font-weight:600;margin-bottom:20px}
+  .sub{font-size:14px;color:#8aa39b;margin-bottom:22px}
+  .addr{
+    background:#0b1310;border:1px solid rgba(111,224,190,.35);border-radius:16px;
+    padding:18px 14px;margin-bottom:14px}
+  .addr .lbl{font-size:12px;color:#8aa39b;text-transform:uppercase;letter-spacing:.14em;margin-bottom:8px}
+  .addr .ip{
+    font-family:ui-monospace,"JetBrains Mono",Consolas,monospace;
+    font-size:34px;font-weight:700;color:#7fead0;user-select:all;-webkit-user-select:all}
+  .addr .alt{font-family:ui-monospace,Consolas,monospace;font-size:15px;color:#cdddd7;margin-top:6px;user-select:all}
+  a.btn{
+    display:block;background:#6fe0be;color:#0b1310;font-size:17px;font-weight:700;
+    text-decoration:none;padding:15px;border-radius:14px;margin-top:8px}
+  a.btn:active{background:#7fead0}
+  .hint{font-size:12.5px;color:#6d827b;margin-top:16px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#6fe0be;
+    margin-right:7px;vertical-align:middle;animation:bl 1.4s ease-in-out infinite}
+  @keyframes bl{0%,100%{opacity:1}50%{opacity:.25}}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">AtomSpectra</div>
+    <h1>Прибор подключён</h1>
+    <div class="sub"><span class="dot"></span>Открываю страницу прибора…</div>
+
+    <div class="addr">
+      <div class="lbl">Адрес в браузере</div>
+      <div class="ip">192.168.4.1</div>
+      <div class="alt">atomspectra.local</div>
+    </div>
+
+    <a class="btn" href="http://192.168.4.1/">Открыть прибор →</a>
+
+    <div class="hint">Если не открылось само — введите адрес <b>192.168.4.1</b> в адресной строке браузера.</div>
+  </div>
+
+<script>
+  // #FIELD-11: атомическая авто-загрузка страницы прибора. Пробуем сразу; в
+  // ограниченном captive-webview (iOS CNA) редирект может блокироваться —
+  // тогда работают крупный адрес выше и кнопка (fallback, #FIELD-10).
+  setTimeout(function(){ try{ location.replace('http://192.168.4.1/'); }catch(e){} }, 900);
+</script>
+</body>
+</html>

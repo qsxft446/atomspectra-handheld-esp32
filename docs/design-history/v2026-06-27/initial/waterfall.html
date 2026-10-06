@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtomSpectra · Водопад</title>
+<style>
+  :root{ --accent:#9bdb4d; --accent-dim:rgba(155,219,77,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--bg); }
+  body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; -webkit-text-size-adjust:100%; padding-bottom:28px; }
+  a{ color:inherit; text-decoration:none; }
+  button,input,select{ font-family:inherit; }
+  .wrap{ max-width:1460px; margin:0 auto; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+  header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+  .brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+  .logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+  .logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+  .logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+  .chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+  nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+  nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+  nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+  .panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; }
+  .pad{ padding:13px 16px; }
+  .status{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; font-size:12.5px; color:var(--dim); padding:2px; }
+  .status .sep{ color:#3a443a; } .status .ac{ color:var(--accent); font-weight:600; } .status .w{ color:var(--txt); } .mut{ color:#6b756a; }
+  .bar{ height:8px; border-radius:4px; background:#1b211a; overflow:hidden; } .bar > i{ display:block; height:100%; border-radius:4px; }
+  .row{ display:flex; align-items:center; gap:16px; padding:12px 16px; flex-wrap:wrap; }
+  .row + .row{ border-top:1px solid #1b211a; }
+  .grp{ display:flex; gap:8px; }
+  .btn{ border-radius:8px; padding:9px 16px; font-size:13px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); }
+  .btn.sm{ padding:8px 13px; font-size:12.5px; }
+  .btn.green{ background:var(--accent-dim); border-color:rgba(155,219,77,.5); color:var(--accent); font-weight:600; }
+  .btn.amber{ background:rgba(240,180,60,.08); border-color:rgba(240,180,60,.45); color:#f0c45a; }
+  .btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.45); color:#ff8a82; }
+  .btn.solid{ background:var(--accent); border-color:var(--accent); color:#0c1206; font-weight:600; }
+  .seg{ display:flex; border:1px solid #2a322a; border-radius:7px; overflow:hidden; }
+  .seg button{ padding:7px 13px; font-size:12px; cursor:pointer; border:none; background:transparent; color:#9aa496; }
+  .seg button.on{ background:var(--accent); color:#0c1206; font-weight:700; }
+  .lbl{ font-size:11.5px; color:#6b756a; }
+  .num{ width:52px; background:#0c0f0b; border:1px solid #283024; color:#e8efe2; padding:6px 8px; border-radius:7px; font-size:12.5px; text-align:center; outline:none; }
+  .big{ font-size:28px; font-weight:600; color:#e8efe2; letter-spacing:1px; }
+  .big.ac{ color:var(--accent); font-size:22px; } .big.w{ font-size:22px; }
+  input[type=range]{ -webkit-appearance:none; appearance:none; background:transparent; accent-color:var(--accent); width:120px; }
+  input[type=range]::-webkit-slider-runnable-track{ height:4px; border-radius:3px; background:#283028; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px; margin-top:-5px; border-radius:50%; background:var(--accent); cursor:pointer; }
+  .canvas-row{ display:flex; gap:12px; align-items:stretch; }
+  .canvas-row canvas{ width:100%; height:auto; display:block; border-radius:6px; }
+  .legend{ width:46px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; flex-shrink:0; font-size:10px; color:#6b756a; }
+  .legend canvas{ height:340px; width:18px; border-radius:3px; border:1px solid #243024; }
+  .overlay{ position:absolute; top:10px; right:12px; text-align:right; font-size:11px; line-height:1.5; color:#aeb6a8; background:rgba(8,10,8,.55); border:1px solid #283024; border-radius:6px; padding:7px 10px; pointer-events:none; }
+  .check{ display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .check i{ width:17px; height:17px; border-radius:5px; border:1.5px solid var(--accent); background:var(--accent); display:flex; align-items:center; justify-content:center; color:#0c0f0b; font-size:12px; font-weight:700; }
+  .check.off i{ background:transparent; border-color:#3a443a; color:transparent; }
+  .console{ background:#0b0e0a; border:1px solid #1b211a; border-radius:10px; padding:12px 14px; font-size:11.5px; line-height:1.7; color:#7c887c; max-height:120px; overflow:auto; }
+  .rec{ display:flex; align-items:center; gap:7px; font-size:12px; font-weight:600; }
+  .ml{ margin-left:auto; }
+  @keyframes pulse{ 0%,100%{ opacity:1 } 50%{ opacity:.3 } }
+  .blink{ animation:pulse 1.4s ease-in-out infinite; }
+  @media (max-width:760px){ .row{ row-gap:10px } .canvas-row{ flex-direction:column } .legend{ flex-direction:row; width:100%; } .legend canvas{ width:100%; height:14px; } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+    <div class="chips">
+      <span class="chip ok"><span class="dot"></span>Прибор подключён</span>
+      <span class="chip" id="rssi">WiFi −52 dBm</span>
+      <span class="chip" id="ip">192.168.x.x</span>
+    </div>
+  </header>
+  <nav>
+    <a href="index.html">← Спектр</a>
+    <span class="on">Водопад</span>
+    <a href="saved.html">Сохранённые</a>
+    <a href="system.html">Система</a>
+  </nav>
+
+  <div class="wrap">
+    <!-- STATUS -->
+    <div class="status">
+      <span class="ac">CPS <span id="s-cps">136</span></span><span class="sep">|</span>
+      <span class="w"><span id="s-total">138 075</span> <span class="mut">counts</span></span><span class="sep">|</span>
+      <span id="s-up">14m 1s</span><span class="sep">|</span>
+      <span>CPU <span id="s-cpu">52</span>%</span><span class="sep">|</span>
+      <span>Lost <span id="s-lost">240</span></span><span class="sep">|</span>
+      <span>T <span id="s-temp">0/0/0</span> °C</span>
+    </div>
+
+    <!-- MEMORY -->
+    <section class="panel pad" style="display:flex;flex-direction:column;gap:11px">
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:#aeb6a8"><span><span style="color:var(--accent);font-weight:600">⛁ Flash LittleFS</span> &nbsp; <span id="m-flash">2 532 / 13 248 КБ (19.1%)</span></span><span class="mut" id="m-free">свободно 10 716 КБ</span></div>
+        <div class="bar"><i id="m-flashbar" style="width:19.1%;background:var(--accent);box-shadow:0 0 8px rgba(155,219,77,.4)"></i></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:#aeb6a8"><span><span style="color:var(--accent);font-weight:600">◷ Кольцо ОЗУ (PSRAM)</span> &nbsp; <span id="m-ring">149 / 256 строк</span></span><span class="mut" id="m-ringmode">накопление</span></div>
+        <div class="bar"><i id="m-ringbar" style="width:58%;background:#5fb0c4"></i></div>
+      </div>
+    </section>
+
+    <!-- CONTROL DECK -->
+    <section class="panel">
+      <div class="row">
+        <div class="grp">
+          <button class="btn green" id="b-start">▶ Старт</button>
+          <button class="btn amber" id="b-stop">■ Стоп</button>
+          <button class="btn red" id="b-clear">↺ Сброс</button>
+        </div>
+        <div class="ml" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <span class="big" id="d-time">00:14:01</span><span class="mut">|</span>
+          <span class="big ac"><span id="d-cps">136</span><span class="mut" style="font-size:12px"> CPS</span></span><span class="mut">|</span>
+          <span class="big w"><span id="d-total">138 075</span><span class="mut" style="font-size:12px"> counts</span></span>
+        </div>
+      </div>
+      <div class="row">
+        <span class="rec" id="recind" style="color:#ff5a52"><span class="dot blink" style="background:#ff5a52;box-shadow:0 0 8px #ff5a52"></span>ЗАПИСЬ</span>
+        <span class="mut">|</span>
+        <div style="display:flex;align-items:center;gap:7px">
+          <span class="lbl">Интервал, с</span>
+          <input class="num" id="iv" value="5">
+          <button class="btn sm" id="b-apply">применить</button>
+        </div>
+        <span class="mut">|</span>
+        <div class="check" id="store"><i>✓</i><span style="font-size:12.5px">хранить во Flash</span><span class="lbl">(без галочки — только ОЗУ)</span></div>
+        <div class="grp ml">
+          <button class="btn sm">📷 Снимок</button>
+          <button class="btn sm">💾 Стрим на диск…</button>
+          <button class="btn sm solid">⬇ Экспорт .n42</button>
+        </div>
+      </div>
+      <div class="row">
+        <div style="display:flex;align-items:center;gap:8px"><span class="lbl">Ось X</span><div class="seg" id="seg-x"><button data-v="ch" class="on">каналы</button><button data-v="kev">кэВ</button></div></div>
+        <div style="display:flex;align-items:center;gap:8px"><span class="lbl">Яркость</span><div class="seg" id="seg-y"><button data-v="lin">лин</button><button data-v="log" class="on">лог</button></div></div>
+        <div style="display:flex;align-items:center;gap:9px"><span class="lbl">Контраст</span><input type="range" id="contrast" min="40" max="200" value="100"></div>
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="cmap"><span class="lbl">Палитра</span><canvas id="cmapbar" width="130" height="16" style="width:120px;height:14px;border-radius:4px;border:1px solid #2a322a;display:block"></canvas><span class="lbl" id="cmapname" style="min-width:54px;color:#aeb6a8">Inferno</span></div>
+        <div class="ml" style="display:flex;align-items:center;gap:8px"><span class="lbl">Каналы</span><input class="num" id="chmin" value="0" style="width:62px"><span class="mut">–</span><input class="num" id="chmax" value="8192" style="width:62px"><button class="btn sm" id="b-zoom">сброс зума</button></div>
+      </div>
+    </section>
+
+    <!-- WATERFALL -->
+    <section class="panel pad">
+      <div class="canvas-row">
+        <div style="flex:1;min-width:0;position:relative">
+          <canvas id="wf" width="1400" height="480" style="cursor:crosshair"></canvas>
+          <div class="overlay">
+            <div>строк: <span style="color:#e8efe2" id="o-rows">149</span> &nbsp; низ: <span style="color:#e8efe2" id="o-bottom">#148</span> <span style="color:var(--accent);font-weight:600" id="o-live">[LIVE]</span></div>
+            <div>норм: <span style="color:#e8efe2" id="o-norm">11</span> &nbsp; X: <span style="color:#e8efe2" id="o-x">0..8192</span></div>
+            <div id="o-cur" style="color:#5b655a">наведите курсор на водопад</div>
+          </div>
+        </div>
+        <div class="legend"><span>больше</span><canvas id="lg" width="22" height="360"></canvas><span>меньше</span></div>
+      </div>
+    </section>
+
+    <!-- SLICE -->
+    <section class="panel pad" style="padding-bottom:8px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px"><span style="font-weight:600;color:#e8efe2">Срез спектра <span class="mut" id="sl-label" style="font-weight:400">· верхняя строка (newest)</span></span></div>
+      <canvas id="sl" width="1400" height="170" style="width:100%;height:auto;display:block"></canvas>
+    </section>
+
+    <!-- LOG -->
+    <section class="console" id="log"></section>
+  </div>
+
+<script>
+"use strict";
+(function(){
+  // ---------- config ----------
+  var M={l:54,t:8,r:14,b:30}, WF={w:1400,h:480}, SLM={l:54,t:10,r:14,b:28}, SL={w:1400,h:170};
+  var dataW=1200, N=520, plotW=WF.w-M.l-M.r, plotH=WF.h-M.t-M.b;
+  var st={ rec:true, interval:5, store:true, energyUnit:'ch', logScale:true, contrast:100,
+           cmap:'Inferno', chMin:0, chMax:8192, base:70, sec:0,
+           elapsed:841, cps:136, total:138075, rowsTotal:149, ringRows:149, ringCap:256,
+           flashUsed:2532, flashTotal:13248 };
+  var CMAPS=['Inferno','Magma','Viridis','Grayscale'];
+  var hoverRow=null, hoverBin=null, rowsRaw=[], gmax=1, logMax=1, lut;
+
+  // ---------- colormaps ----------
+  function stops(n){ var S={
+    Inferno:[[0,0,0,4],[.15,40,11,84],[.3,101,21,110],[.45,159,42,99],[.6,212,72,66],[.75,245,125,21],[.88,250,193,39],[1,252,255,164]],
+    Magma:[[0,0,0,4],[.15,28,16,68],[.3,79,18,123],[.45,129,37,129],[.6,181,54,122],[.75,229,80,100],[.88,251,135,97],[1,252,253,191]],
+    Viridis:[[0,68,1,84],[.2,72,40,120],[.4,62,74,137],[.55,49,104,142],[.7,38,130,142],[.82,53,183,121],[.92,145,213,66],[1,253,231,37]],
+    Grayscale:[[0,8,10,8],[1,236,242,232]] }; return S[n]||S.Inferno; }
+  function buildLut(n){ var s=stops(n), l=new Uint8ClampedArray(768),i,k,a,b,f;
+    for(i=0;i<256;i++){ var t=i/255; a=s[0]; b=s[s.length-1];
+      for(k=0;k<s.length-1;k++){ if(t>=s[k][0]&&t<=s[k+1][0]){ a=s[k]; b=s[k+1]; break; } }
+      f=(b[0]-a[0])>0?(t-a[0])/(b[0]-a[0]):0;
+      l[i*3]=a[1]+(b[1]-a[1])*f; l[i*3+1]=a[2]+(b[2]-a[2])*f; l[i*3+2]=a[3]+(b[3]-a[3])*f; }
+    return l; }
+  function rnd(){ return Math.random()+Math.random()+Math.random()-1.5; }
+
+  // ---------- demo data (replace with device feed, see bottom) ----------
+  function buildData(){
+    var peaks=[[186,80,6,0],[242,60,6,0],[295,95,6,0],[352,150,7,.05],[511,170,9,.25],
+      [609,360,8,.35],[662,860,7,1],[768,90,8,.1],[934,70,9,0],[1120,250,10,.2],
+      [1238,110,10,0],[1378,80,11,0],[1460,470,12,.04],[1764,280,13,.18],[2204,95,15,0],[2614,300,16,.1]];
+    rowsRaw=[]; gmax=0;
+    for(var r=0;r<N;r++){
+      var bump=Math.exp(-Math.pow(r-150,2)/(2*676)), drift=1+.05*Math.sin(r/38);
+      var row=new Float32Array(dataW);
+      for(var x=0;x<dataW;x++){
+        var E=x/dataW*3000, c=1300*Math.exp(-E/170)+95*Math.exp(-E/650)+5;
+        for(var p=0;p<peaks.length;p++){ var P=peaks[p], a=P[1]*(1+P[3]*2.6*bump); if(P[0]===1460)a*=drift; c+=a*Math.exp(-((E-P[0])*(E-P[0]))/(2*P[2]*P[2])); }
+        c*=1+.16*rnd(); if(c<0)c=0; row[x]=c; if(c>gmax)gmax=c;
+      } rowsRaw.push(row);
+    }
+    logMax=Math.log(1+gmax);
+  }
+  function valAt(row,ch){ var i=Math.round(ch/8191*(dataW-1)); if(i<0)i=0; if(i>dataW-1)i=dataW-1; return row[i]; }
+  function norm(c){ var g=100/st.contrast, t=st.logScale?Math.log(1+c)/logMax:c/gmax; if(t<0)t=0; if(t>1)t=1; return Math.pow(t,g); }
+
+  // ---------- draw ----------
+  function drawWf(){
+    var cv=document.getElementById('wf'), ctx=cv.getContext('2d'), span=st.chMax-st.chMin;
+    ctx.fillStyle='#0a0c0a'; ctx.fillRect(0,0,WF.w,WF.h);
+    var img=ctx.createImageData(plotW,plotH), d=img.data;
+    for(var y=0;y<plotH;y++){ var row=rowsRaw[(st.base+y)%N];
+      for(var x=0;x<plotW;x++){ var ch=st.chMin+(x/(plotW-1))*span, idx=(Math.min(255,norm(valAt(row,ch))*255)|0)*3, q=(y*plotW+x)*4;
+        d[q]=lut[idx]; d[q+1]=lut[idx+1]; d[q+2]=lut[idx+2]; d[q+3]=255; } }
+    ctx.putImageData(img,M.l,M.t); drawWfAxes(ctx,span);
+  }
+  function drawWfAxes(ctx,span){
+    ctx.font="11px ui-monospace,monospace"; ctx.textAlign='center'; ctx.textBaseline='top';
+    for(var k=0;k<=8;k++){ var fr=k/8,x=M.l+fr*plotW,ch=st.chMin+fr*span;
+      ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(x,M.t); ctx.lineTo(x,M.t+plotH); ctx.stroke();
+      ctx.fillStyle='#6b756a'; ctx.fillText(st.energyUnit==='ch'?Math.round(ch):Math.round(ch*3000/8191),x,M.t+plotH+6); }
+    ctx.fillStyle='#4a534a'; ctx.fillText(st.energyUnit==='ch'?'канал':'энергия, кэВ',M.l+plotW/2,M.t+plotH+18);
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    for(k=0;k<=5;k++){ var y=M.t+plotH*k/5, age=(plotH*k/5)*st.interval;
+      var lab=k===0?'сейчас':(age<3600?'−'+Math.round(age/60)+'м':'−'+(age/3600).toFixed(1)+'ч');
+      ctx.fillStyle='#6b756a'; ctx.fillText(lab,M.l-7,y); }
+    ctx.strokeStyle='#283024'; ctx.lineWidth=1; ctx.strokeRect(M.l+.5,M.t+.5,plotW,plotH);
+    if(hoverBin!=null&&hoverRow!=null){ var hx=M.l+hoverBin+.5,hy=M.t+hoverRow+.5;
+      ctx.strokeStyle=cssVar(); ctx.globalAlpha=.85; ctx.beginPath(); ctx.moveTo(hx,M.t); ctx.lineTo(hx,M.t+plotH); ctx.moveTo(M.l,hy); ctx.lineTo(M.l+plotW,hy); ctx.stroke(); ctx.globalAlpha=1; }
+  }
+  function drawSlice(rowIndex){
+    var cv=document.getElementById('sl'), ctx=cv.getContext('2d');
+    var l=SLM.l,t=SLM.t,pw=SL.w-SLM.l-SLM.r,ph=SL.h-SLM.t-SLM.b,span=st.chMax-st.chMin;
+    ctx.clearRect(0,0,SL.w,SL.h); ctx.fillStyle='#0c0f0b'; ctx.fillRect(l,t,pw,ph);
+    var row=rowsRaw[rowIndex%N], sm=gmax, ac=cssVar();
+    ctx.font="10px ui-monospace,monospace"; ctx.textAlign='right'; ctx.textBaseline='middle';
+    [1,10,100,1000].forEach(function(v){ if(v>sm)return; var y=t+ph*(1-Math.log(1+v)/Math.log(1+sm));
+      ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.beginPath(); ctx.moveTo(l,y); ctx.lineTo(l+pw,y); ctx.stroke(); ctx.fillStyle='#4a534a'; ctx.fillText(v,l-6,y); });
+    function yOf(ch){ return t+ph*(1-Math.log(1+valAt(row,ch))/Math.log(1+sm)); }
+    ctx.beginPath(); for(var x=0;x<pw;x++){ var ch=st.chMin+(x/(pw-1))*span,y=yOf(ch); x?ctx.lineTo(l+x,y):ctx.moveTo(l+x,y); }
+    ctx.lineTo(l+pw,t+ph); ctx.lineTo(l,t+ph); ctx.closePath();
+    var g=ctx.createLinearGradient(0,t,0,t+ph); g.addColorStop(0,ac+'55'); g.addColorStop(1,ac+'0d'); ctx.fillStyle=g; ctx.fill();
+    ctx.beginPath(); for(x=0;x<pw;x++){ ch=st.chMin+(x/(pw-1))*span; y=yOf(ch); x?ctx.lineTo(l+x,y):ctx.moveTo(l+x,y); }
+    ctx.strokeStyle=ac; ctx.lineWidth=1.3; ctx.stroke();
+    ctx.fillStyle='#6b756a'; ctx.textAlign='center'; ctx.textBaseline='top';
+    for(var k=0;k<=8;k++){ var fr=k/8,xx=l+fr*pw,c=st.chMin+fr*span; ctx.fillText(st.energyUnit==='ch'?Math.round(c):Math.round(c*3000/8191),xx,t+ph+6); }
+    ctx.strokeStyle='#283024'; ctx.strokeRect(l+.5,t+.5,pw,ph);
+  }
+  function drawLegend(){ var cv=document.getElementById('lg'),ctx=cv.getContext('2d'),h=cv.height,w=cv.width,img=ctx.createImageData(w,h),d=img.data;
+    for(var y=0;y<h;y++){ var idx=(Math.min(255,(1-y/h)*255)|0)*3; for(var x=0;x<w;x++){ var q=(y*w+x)*4; d[q]=lut[idx]; d[q+1]=lut[idx+1]; d[q+2]=lut[idx+2]; d[q+3]=255; } } ctx.putImageData(img,0,0); }
+  function drawCmap(){ var cv=document.getElementById('cmapbar'),ctx=cv.getContext('2d'),w=cv.width,h=cv.height,img=ctx.createImageData(w,h),d=img.data;
+    for(var x=0;x<w;x++){ var idx=(Math.min(255,x/w*255)|0)*3; for(var y=0;y<h;y++){ var q=(y*w+x)*4; d[q]=lut[idx]; d[q+1]=lut[idx+1]; d[q+2]=lut[idx+2]; d[q+3]=255; } } ctx.putImageData(img,0,0); }
+  function cssVar(){ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#9bdb4d'; }
+  function redrawAll(){ lut=buildLut(st.cmap); drawLegend(); drawCmap(); drawWf(); drawSlice(hoverRow!=null?st.base+hoverRow:st.base); }
+
+  // ---------- dynamic text ----------
+  function pad(n){ return (''+n).padStart(2,'0'); }
+  function hms(s){ return pad((s/3600)|0)+':'+pad(((s%3600)/60)|0)+':'+pad(s%60); }
+  function fmt(n){ return Math.round(n).toLocaleString('ru-RU'); }
+  function refresh(){
+    set('s-cps',st.cps); set('d-cps',st.cps); set('s-total',fmt(st.total)); set('d-total',fmt(st.total));
+    set('d-time',hms(st.elapsed));
+    var fp=(st.flashUsed/st.flashTotal*100);
+    set('m-flash',fmt(st.flashUsed)+' / '+fmt(st.flashTotal)+' КБ ('+fp.toFixed(1)+'%)');
+    set('m-free','свободно '+fmt(st.flashTotal-st.flashUsed)+' КБ'); document.getElementById('m-flashbar').style.width=fp+'%';
+    set('m-ring',st.ringRows+' / '+st.ringCap+' строк'); document.getElementById('m-ringbar').style.width=(st.ringRows/st.ringCap*100)+'%';
+    set('m-ringmode',st.ringRows>=st.ringCap?'перезапись':'накопление');
+    set('o-rows',st.rowsTotal); set('o-bottom','#'+Math.max(0,st.rowsTotal-1)); set('o-x',st.chMin+'..'+st.chMax); set('o-norm',Math.round(gmax));
+    set('o-live',st.rec?'[LIVE]':'[PAUSE]');
+  }
+  function set(id,v){ var e=document.getElementById(id); if(e)e.textContent=v; }
+
+  // ---------- interaction ----------
+  function bindSeg(id,apply){ var seg=document.getElementById(id); seg.addEventListener('click',function(e){ var b=e.target.closest('button'); if(!b)return;
+    [].forEach.call(seg.children,function(c){c.classList.remove('on');}); b.classList.add('on'); apply(b.getAttribute('data-v')); }); }
+  function onMove(e){ var cv=document.getElementById('wf'),r=cv.getBoundingClientRect(),sx=cv.width/r.width,sy=cv.height/r.height;
+    var mx=(e.clientX-r.left)*sx-M.l,my=(e.clientY-r.top)*sy-M.t;
+    if(mx<0||mx>=plotW||my<0||my>=plotH){ onLeave(); return; }
+    hoverBin=Math.floor(mx); hoverRow=Math.floor(my);
+    var span=st.chMax-st.chMin, ch=st.chMin+(hoverBin/(plotW-1))*span, E=ch*3000/8191;
+    var cnt=Math.round(valAt(rowsRaw[(st.base+hoverRow)%N],ch));
+    var el=document.getElementById('o-cur'); el.style.color=cssVar(); el.textContent='@ канал '+Math.round(ch)+' · '+Math.round(E)+' кэВ · '+fmt(cnt)+' имп';
+    drawWf(); drawSlice((st.base+hoverRow)%N);
+  }
+  function onLeave(){ hoverBin=null; hoverRow=null; var el=document.getElementById('o-cur'); el.style.color='#5b655a'; el.textContent='наведите курсор на водопад'; drawWf(); drawSlice(st.base); }
+  function logLine(m){ var d=new Date(), t='['+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'] ';
+    var box=document.getElementById('log'), div=document.createElement('div'); div.innerHTML='<span style="color:#4a534a">'+t+'</span>'+m; box.appendChild(div); box.scrollTop=box.scrollHeight; }
+
+  function init(){
+    buildData(); redrawAll(); refresh();
+    ['WS подключён','backfill: 0 строк, first #0','запись во Flash: вкл'].forEach(logLine);
+    var wf=document.getElementById('wf'); wf.addEventListener('mousemove',onMove); wf.addEventListener('mouseleave',onLeave);
+    document.getElementById('b-start').onclick=function(){ st.rec=true; refresh(); logLine('запись запущена'); };
+    document.getElementById('b-stop').onclick=function(){ st.rec=false; refresh(); logLine('запись остановлена'); };
+    document.getElementById('b-clear').onclick=function(){ st.rowsTotal=0; st.ringRows=0; refresh(); logLine('кольцо ОЗУ очищено'); };
+    document.getElementById('b-apply').onclick=function(){ var v=Math.max(5,Math.min(60,parseInt(document.getElementById('iv').value)||5)); st.interval=v; document.getElementById('iv').value=v; drawWf(); logLine('интервал = '+v+' с'); };
+    var store=document.getElementById('store'); store.onclick=function(){ st.store=!st.store; store.classList.toggle('off',!st.store); logLine('хранить во Flash: '+(st.store?'вкл':'выкл')); };
+    bindSeg('seg-x',function(v){ st.energyUnit=v; redrawAll(); });
+    bindSeg('seg-y',function(v){ st.logScale=(v==='log'); redrawAll(); });
+    document.getElementById('contrast').oninput=function(e){ st.contrast=+e.target.value; drawWf(); };
+    document.getElementById('cmap').onclick=function(){ var i=CMAPS.indexOf(st.cmap); st.cmap=CMAPS[(i+1)%CMAPS.length]; document.getElementById('cmapname').textContent=st.cmap; redrawAll(); };
+    document.getElementById('chmin').onchange=function(e){ var v=Math.max(0,Math.min(st.chMax-100,parseInt(e.target.value)||0)); st.chMin=v; e.target.value=v; redrawAll(); };
+    document.getElementById('chmax').onchange=function(e){ var v=Math.max(st.chMin+100,Math.min(8192,parseInt(e.target.value)||8192)); st.chMax=v; e.target.value=v; redrawAll(); };
+    document.getElementById('b-zoom').onclick=function(){ st.chMin=0; st.chMax=8192; document.getElementById('chmin').value=0; document.getElementById('chmax').value=8192; redrawAll(); };
+
+    setInterval(function(){ st.sec++;
+      st.cps=128+Math.round(10*Math.random()+6*Math.sin(st.sec/7)); st.elapsed++; st.total+=st.cps;
+      if(st.rec && st.sec%st.interval===0){ st.base=(st.base-1+N)%N; st.rowsTotal++; if(st.ringRows<st.ringCap)st.ringRows++; if(st.store)st.flashUsed=Math.min(st.flashTotal,st.flashUsed+16); drawWf(); if(hoverRow==null)drawSlice(st.base); }
+      refresh();
+    },1000);
+  }
+  if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded',init);
+
+  /* ======================================================================
+     ПОДКЛЮЧЕНИЕ К ПЛАТЕ (раскомментировать на устройстве, убрать демо)
+     ----------------------------------------------------------------------
+     // живой стрим строк водопада:
+     var ws=new WebSocket('ws://'+location.host+'/ws/waterfall'); ws.binaryType='arraybuffer';
+     ws.onmessage=function(e){ var u=new Uint16Array(e.data);   // 8192 каналов uint16
+       rowsRaw[st.base=(st.base-1+N)%N]=Float32Array.from(u);   // вставить строку сверху
+       gmax=Math.max.apply(null,u); logMax=Math.log(1+gmax); drawWf(); };
+     // периодический статус:
+     async function poll(){ try{ var s=await (await fetch('/api/status')).json();
+       st.cps=s.cps; st.total=s.total; st.elapsed=s.elapsed; st.rowsTotal=s.rows; refresh();
+       document.getElementById('rssi').textContent='WiFi '+s.rssi+' dBm';
+       document.getElementById('ip').textContent=location.hostname; }catch(_){} }
+     setInterval(poll,1000);
+     ====================================================================== */
+})();
+</script>
+</body>
+</html>

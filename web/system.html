@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="page.title">AtomSpectra · Система</title>
+<style>
+:root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; background:var(--bg); }
+body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; padding-bottom:28px; }
+a{ color:inherit; text-decoration:none; } button{ font-family:inherit; }
+.wrap{ max-width:none; margin:0; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+.brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+.logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+.logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+.logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+.chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+.chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+.chip.warn{ color:#f0c45a; border-color:rgba(240,180,60,.35); }
+#batt-chip{ display:inline-flex; align-items:center; }   /* #PWR-8: раньше inline gap:6px не работал без flex — иконка наезжала на цифры */
+.chip.btn{ cursor:pointer; color:var(--accent); border-color:rgba(52,211,192,.4); }
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+.dot.off{ background:#5b655a; box-shadow:none; }
+nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+.panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; padding:16px; }
+.mut{ color:#6b756a; }
+.grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; }
+.ttl{ font-size:14px; font-weight:600; color:#e8efe2; margin-bottom:13px; display:flex; align-items:center; gap:8px; }
+.kv{ display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid #161c15; font-size:12.5px; }
+.kv span:first-child{ color:#7c887c; } .kv span:last-child{ color:#dfe5dc; text-align:right; }
+.bar{ height:7px; border-radius:4px; background:#1b211a; overflow:hidden; } .bar > i{ display:block; height:100%; border-radius:4px; transition:width .3s,background .3s; }
+.btn{ width:100%; border-radius:8px; padding:9px 0; font-size:12.5px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); margin-top:13px; }
+.btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.4); color:var(--accent); font-weight:600; }
+.btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.4); color:#ff8a82; }
+.btn:hover{ filter:brightness(1.2); }
+.btn:disabled{ opacity:.45; cursor:default; filter:none; }
+.chip.lang{ cursor:pointer; color:var(--accent); border-color:rgba(52,211,192,.4); font-weight:600; padding:3px 8px; font-size:10.5px; line-height:1.2; min-width:28px; text-align:center; }
+.chip.lang:hover{ filter:brightness(1.15); }
+.boot-row{ display:flex; align-items:center; gap:9px; padding:8px 0; font-size:12.5px; cursor:pointer; border-bottom:1px solid #161c15; color:#dfe5dc; }
+.ota-box{ border:1px solid var(--bd); border-radius:8px; padding:10px 12px; margin-top:12px; }
+.boot-row input{ width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0; }
+.grid-3{ display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; }
+</style>
+</head>
+<body>
+<header>
+<div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+<div class="chips"><span class="chip ok" id="dev-chip" style="visibility:hidden"><span class="dot" id="dev-dot"></span><span id="dev-stat">—</span></span><span class="chip" id="batt-chip" title="Battery" style="cursor:default;display:none;gap:6px"><span id="batt-icon" style="display:inline-block;width:18px;height:10px;border:1.4px solid #8a9686;border-radius:2px;position:relative;vertical-align:middle;margin-right:2px"><span id="batt-fill" style="display:block;height:100%;width:0%;background:#34d3c0;border-radius:1px"></span><span style="position:absolute;right:-4px;top:2.5px;width:2px;height:4px;background:#8a9686;border-radius:0 1px 1px 0"></span></span><span id="batt-pct">—%</span></span><span class="chip lang" id="langBtn">EN</span></div>
+</header>
+<nav>
+<a href="/" data-i18n="nav.spectrum">Спектр</a>
+<a href="/waterfall" data-i18n="nav.waterfall">Водопад</a>
+<a href="/monitor" data-i18n="nav.monitor">Мониторинг</a>
+<a href="/saved" data-i18n="nav.saved">Файлы</a>
+<span class="on" data-i18n="nav.system">Система</span>
+<a href="/service" data-i18n="nav.service">Сервис</a>
+</nav>
+
+<div class="wrap">
+
+<div class="grid">
+<section class="panel">
+<div style="display:flex;justify-content:space-between;margin-bottom:8px">
+<span style="font-size:12px;color:#8a9686" data-i18n="heap.title">Свободная память (heap)</span>
+<span style="font-size:18px;font-weight:600;color:var(--accent)"><span id="heap-cur">—</span> <span class="mut" style="font-size:11px" data-i18n="unit.kb">КБ</span></span>
+</div>
+<canvas id="heapc" width="700" height="90" style="width:100%;height:auto;display:block"></canvas>
+<div class="mut" style="font-size:11px;margin-top:5px"><span data-i18n="heap.minSince">мин. с момента старта:</span> <span id="heap-min">—</span> <span data-i18n="unit.kb">КБ</span></div>
+</section>
+<section class="panel">
+<div style="display:flex;justify-content:space-between;margin-bottom:8px">
+<span style="font-size:12px;color:#8a9686" data-i18n="flash.title">Flash (LittleFS)</span>
+<span style="font-size:18px;font-weight:600;color:var(--accent)"><span id="flash-cur">—</span> <span class="mut" style="font-size:11px" data-i18n="unit.kb">КБ</span></span>
+</div>
+<canvas id="flashc" width="700" height="90" style="width:100%;height:auto;display:block"></canvas>
+<div class="mut" style="font-size:11px;margin-top:5px"><span data-i18n="flash.used">занято:</span> <span id="flash-sub">—</span></div>
+</section>
+</div>
+
+<div class="grid">
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9636;</span> ESP32-S3</div>
+<div class="kv"><span data-i18n="esp.chip">Чип</span><span>ESP32-S3 N16R8</span></div>
+<div class="kv"><span data-i18n="esp.flashPsram">Flash / PSRAM</span><span data-i18n="esp.flashPsramVal">16 МБ / 8 МБ</span></div>
+<div class="kv"><span>ESP-IDF</span><span>v5.4</span></div>
+<div class="kv"><span data-i18n="esp.fw">Прошивка</span><span id="fw-ver">—</span></div>
+<!-- #OTA-1: загрузка прошивки по WiFi -->
+<div class="kv"><span data-i18n="ota.built">Сборка (хэш)</span><span id="fw-built">—</span></div>
+<div class="kv"><span data-i18n="ota.part">Раздел прошивки</span><span id="fw-part">—</span></div>
+<div class="ota-box">
+<div style="font-size:12px;color:#8a9686;margin-bottom:6px" data-i18n="ota.title">Загрузить прошивку по WiFi</div>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<label class="btn" style="width:auto;margin-top:0;padding:8px 14px;flex-shrink:0"><span data-i18n="ota.pick">Выбрать .bin</span><input type="file" id="ota-file" accept=".bin,application/octet-stream" style="display:none" onchange="otaPicked()"></label>
+<span id="ota-name" class="mut" style="font-size:11.5px;overflow-wrap:anywhere;flex:1;min-width:120px">—</span>
+</div>
+<button class="btn green" id="ota-btn" onclick="otaUpload()" disabled data-i18n="ota.upload">Записать и перезагрузить</button>
+<div class="bar" style="margin-top:9px"><i id="ota-bar" style="width:0%;background:var(--accent)"></i></div>
+<div id="ota-msg" class="mut" style="font-size:11.5px;margin-top:6px;min-height:15px;line-height:1.45"></div>
+</div>
+<div class="kv"><span data-i18n="esp.uptime">Uptime</span><span id="up">—</span></div>
+<div class="kv"><span data-i18n="esp.freeHeap">Free heap</span><span id="heap-kv">—</span></div>
+<div class="kv"><span data-i18n="esp.minHeap">Min free heap</span><span id="heap-min-kv">—</span></div>
+<div style="margin-top:12px">
+<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b756a;margin-bottom:5px"><span>Flash LittleFS</span><span id="flash-pct">—</span></div>
+<div class="bar"><i id="flash-fi" style="width:0%;background:var(--accent)"></i></div>
+</div>
+<div style="border-top:1px solid var(--bd);margin:12px 0 8px"></div>
+<div id="batt-absent" class="mut" style="font-size:12px" data-i18n="batt.notFound">Модуль не обнаружен на шине I2C. Если он должен быть подключён — проверьте питание, SDA/SCL и подтяжки.</div>
+<div id="batt-details" style="display:none">
+<div class="kv"><span data-i18n="batt.status">Статус питания</span><span id="batt-status-kv">—</span></div>
+<div style="margin:10px 0">
+<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b756a;margin-bottom:5px"><span data-i18n="batt.chargeLevel">Уровень заряда</span><span id="batt-pct2">—</span></div>
+<div class="bar"><i id="batt-fi" style="width:0%;background:var(--accent)"></i></div>
+</div>
+<div class="kv"><span data-i18n="batt.voltage">Напряжение АКБ</span><span id="batt-v-kv">—</span></div>
+<div class="kv"><span data-i18n="batt.vbus">Внешнее питание</span><span id="batt-vbus-kv">—</span></div>
+<div style="margin:10px 0">
+<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b756a;margin-bottom:5px"><span data-i18n="batt.iinlim">Ток заряда</span><span id="batt-iinlim-val">500 мА</span></div>
+<input type="range" id="batt-iinlim-slider" min="100" max="2000" step="100" value="500" style="width:100%;accent-color:var(--accent)">
+</div>
+<div class="kv"><span data-i18n="batt.otg">DC-DC</span><span id="batt-otg-kv">—</span></div>
+<div class="kv"><span data-i18n="batt.vbusV">Напряжение V-IN USB</span><span id="batt-vbusv-kv">—</span></div>
+<div class="kv"><span data-i18n="batt.faults">Состояние системы питания</span><span id="batt-faults-kv">—</span></div>
+</div>
+<div style="border-top:1px solid var(--bd);margin:12px 0 8px"></div>
+<div id="tft-absent" class="mut" style="font-size:12px" data-i18n="tft.notFound">Дисплей не подключён.</div>
+<div id="tft-details" style="display:none">
+<div class="kv"><span data-i18n="tft.touch">Тачскрин дисплея</span><span id="tft-cal-kv">—</span></div>
+<button class="btn" onclick="calibrateTft()" data-i18n="tft.calBtn" style="width:fit-content;margin-left:auto;padding:9px 16px">Откалибровать дисплей</button>
+<div id="tft-cal-msg" class="mut" style="font-size:11.5px;margin-top:6px"></div>
+</div>
+<div class="kv"><span data-i18n="sd.card">SD-карта дисплея</span><span id="sd-kv">—</span></div>
+</section>
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#8779;</span> WiFi</div>
+<div class="kv"><span data-i18n="wifi.state">Состояние</span><span id="wifi-state">—</span></div>
+<div class="kv"><span>SSID</span><span id="wifi-ssid">—</span></div>
+<div class="kv"><span>IP</span><span id="wifi-ip">—</span></div>
+<div class="kv"><span>RSSI</span><span id="wifi-rssi">—</span></div>
+<div style="margin-top:12px">
+<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b756a;margin-bottom:5px"><span data-i18n="wifi.signal">Уровень сигнала</span><span id="rssi-desc">—</span></div>
+<div class="bar"><i id="rssi-fi" style="width:0%;background:var(--accent)"></i></div>
+</div>
+<button class="btn" onclick="resetWifi()" data-i18n="wifi.reset">Сбросить WiFi (режим настройки)</button>
+</section>
+
+<section class="panel" id="field-panel">
+<div class="ttl"><span style="color:var(--accent)">&#9788;</span> <span data-i18n="field.title">Полевой режим · Время</span></div>
+<div class="kv"><span data-i18n="field.mode">Режим сети</span><span id="net-mode">—</span></div>
+<button class="btn" id="mode-toggle-btn" onclick="toggleMode()" style="margin-bottom:6px"></button>
+<div class="kv" id="ap-ssid-row" style="display:none"><span data-i18n="field.apSsid">Точка доступа</span><span id="ap-ssid">—</span></div>
+<div class="kv" id="ap-clients-row" style="display:none"><span data-i18n="field.apClients">Подключено телефонов</span><span id="ap-clients">—</span></div>
+<div class="kv"><span data-i18n="field.timeSrc">Источник времени</span><span id="time-src">—</span></div>
+<div class="kv"><span data-i18n="field.rtc">Часы DS3231</span><span id="rtc-stat">—</span></div>
+<input id="manual-time-inp" type="datetime-local" step="1" style="width:100%;padding:9px;background:#0a0c0a;color:#e8efe2;border:1px solid var(--bd);border-radius:6px;box-sizing:border-box;font-family:inherit;font-size:15px;margin-bottom:6px">
+<button class="btn" onclick="setManualTime()" data-i18n="field.setTime">Установить время платы</button>
+<div class="mut" style="font-size:11px;line-height:1.5;margin-top:6px" data-i18n="field.timeHint">В полевом режиме (без интернета) время берётся с телефона автоматически. Поле выше — ручная коррекция (пусто = текущее время телефона).</div>
+<div style="border-top:1px solid var(--bd);margin:12px 0 8px"></div>
+<div style="font-size:12px;color:#8a9686;margin-bottom:6px" data-i18n="field.apPassTitle">Пароль полевой точки доступа</div>
+<div id="ap-pass-warn" style="display:none;font-size:11px;color:#f0c45a;margin-bottom:6px" data-i18n="field.passDefaultWarn">Пароль AP — публичный по умолчанию; для людных мест смени пароль.</div>
+<input id="ap-pass-inp" type="text" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" style="width:100%;padding:9px;background:#0a0c0a;color:#e8efe2;border:1px solid var(--bd);border-radius:6px;box-sizing:border-box;font-family:inherit;font-size:15px">
+<button class="btn" onclick="changeApPass()" data-i18n="field.apPassSave">Сменить пароль AP (перезагрузка)</button>
+<div id="ap-pass-status" class="mut" style="font-size:11px;margin-top:5px"></div>
+</section>
+
+</div>
+
+<div class="grid">
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9678;</span> <span data-i18n="dev.title">Прибор · AtomSpectra</span></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:6px">
+<span style="font-size:12px;color:#8a9686" data-i18n="cpu.title">CPU спектрометра</span>
+<span style="font-size:16px;font-weight:600;color:#f0c45a"><span id="cpu-cur">—</span> <span class="mut" style="font-size:11px">%</span></span>
+</div>
+<canvas id="cpuc" width="700" height="64" style="width:100%;height:auto;display:block;margin-bottom:11px"></canvas>
+<div class="kv"><span>USB</span><span id="dev-usb">—</span></div>
+<div class="kv"><span data-i18n="dev.serial">Серийный №</span><span id="dev-serial">—</span></div>
+<div class="kv"><span data-i18n="dev.ver">Версия прошивки</span><span id="dev-ver">—</span></div>
+<div class="kv"><span data-i18n="dev.ch">Каналов</span><span id="dev-ch">—</span></div>
+<div class="kv"><span data-i18n="dev.cal">Калибровка</span><span id="dev-cal">—</span></div>
+<div class="kv"><span data-i18n="dev.temp">Темп. T1/T2/T3</span><span id="dev-t">—</span></div>
+<div class="kv"><span data-i18n="dev.mode">Режим</span><span id="dev-mode">—</span></div>
+<button class="btn red" onclick="rebootDevice()" data-i18n="dev.reboot">Перезагрузить прибор</button>
+</section>
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9654;</span> <span data-i18n="boot.titleBoot">Старт платы</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+<div>
+<div style="font-size:12px;color:#8a9686;margin-bottom:8px" data-i18n="boot.secSpec">Спектр</div>
+<label class="boot-row"><input type="checkbox" id="bc-as-spec"><span data-i18n="boot.asSpec">Автозапуск набора спектра</span></label>
+<label class="boot-row"><input type="checkbox" id="bc-clr-spec"><span data-i18n="boot.clrSpec">Очищать спектр при старте</span></label>
+<label class="boot-row"><input type="checkbox" id="bc-cal-al"><span data-i18n="boot.calAlways">Всегда читать калибровку с прибора при старте набора</span></label>
+<div class="mut" style="font-size:11px;line-height:1.45;padding:4px 0 0" data-i18n="boot.calHint">Без галочки калибровка читается с прибора, только если на плате она не задана. Действует сразу, без перезагрузки.</div>
+</div>
+<div>
+<div style="font-size:12px;color:#8a9686;margin-bottom:8px" data-i18n="boot.secWf">Водопад</div>
+<label class="boot-row"><input type="checkbox" id="bc-as-wf"><span data-i18n="boot.asWf">Автозапуск записи водопада</span></label>
+<label class="boot-row"><input type="checkbox" id="bc-clr-wf"><span data-i18n="boot.clrWf">Очищать водопад при старте</span></label>
+</div>
+</div>
+<div class="mut" style="font-size:11px;line-height:1.5;margin-top:10px" data-i18n="boot.hint">Применяется один раз при включении / перезагрузке платы. По умолчанию всё выключено.</div>
+<button class="btn green" onclick="saveBootConfig('bc-status')" data-i18n="boot.save">Сохранить</button>
+<div class="mut" id="bc-status" style="font-size:11px;margin-top:7px;text-align:center;min-height:14px"></div>
+</section>
+
+</div>
+
+<div class="grid">
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9654;</span> <span data-i18n="dose.title">Мощность дозы</span></div>
+<div class="kv"><span data-i18n="dose.label">Коэффициент k (µSv·h⁻¹/cps)</span>
+<input type="number" id="dose-k-val" min="0" step="any" style="width:130px;background:var(--panel);color:var(--txt);border:1px solid #444;padding:3px 6px;border-radius:4px">
+</div>
+<div class="mut" style="font-size:11px;line-height:1.5;margin-top:6px" data-i18n="dose.hint">0 — мощность дозы не записывается (NaN в файле). Сохраняется в NVS.</div>
+<button class="btn green" onclick="saveDoseK('dose-k-status')" data-i18n="dose.save">Сохранить</button>
+<div class="mut" id="dose-k-status" style="font-size:11px;margin-top:5px;text-align:center;min-height:14px"></div>
+<div style="margin-top:12px;padding-top:11px;border-top:1px solid #1c241c">
+<div style="font-size:12px;color:#8a9686;margin-bottom:7px" data-i18n="dose.curveLabel">Кривая мощности дозы</div>
+<div class="mut" id="dose-curve-stat" style="font-size:11px;margin-bottom:7px" data-i18n="dose.curveNone">Кривая не загружена (scalar k)</div>
+<div class="mut" style="font-size:11px;line-height:1.5;margin-bottom:8px" data-i18n="dose.curveHint">CSV: channel,k_factor (до 512 точек, без заголовка). Приоритет над scalar k.</div>
+<input type="file" id="dose-curve-file" accept=".csv,.txt" style="font-size:11px;color:var(--txt);background:var(--panel);border:1px solid #444;border-radius:4px;padding:3px 6px;width:100%;margin-bottom:8px">
+<div style="display:flex;gap:8px">
+<button class="btn green" style="margin-top:0" onclick="loadDoseCurveFile('dose-curve-status')" data-i18n="dose.curveLoad">Загрузить CSV</button>
+<button class="btn" style="margin-top:0" onclick="clearDoseCurve('dose-curve-status')" data-i18n="dose.curveClear">Сбросить</button>
+</div>
+<div class="mut" id="dose-curve-status" style="font-size:11px;margin-top:7px;text-align:center;min-height:14px"></div>
+</div>
+</section>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#8644;</span> <span data-i18n="tcp.title">TCP-мост (serial-over-WiFi)</span></div>
+<div class="kv"><span data-i18n="tcp.port">Порт</span><span>8234</span></div>
+<div class="kv"><span data-i18n="wifi.state">Состояние</span><span id="tcp-state">—</span></div>
+<div class="mut" style="font-size:11px;line-height:1.5;margin-top:11px" data-i18n-html="tcp.hint">BecqMoni / AtomSpectra на ПК подключаются к <span id="tcp-addr" style="color:#aeb6a8">—</span> вместо COM-порта.</div>
+<div style="display:flex;gap:8px;margin-top:13px">
+<button class="btn red" style="margin-top:0" onclick="rebootEsp()" data-i18n="btn.rebootEsp">Reboot ESP</button>
+<button class="btn green" style="margin-top:0" onclick="location.reload()" data-i18n="btn.refresh">Обновить</button>
+</div>
+</section>
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9202;</span> <span data-i18n="tz.title">Часовой пояс</span></div>
+<div class="kv"><span data-i18n="tz.label">Пояс отображения</span>
+<select id="tz-sel" onchange="saveTz()" style="background:var(--panel);color:var(--txt);border:1px solid #444;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px"></select>
+</div>
+<div class="mut" style="font-size:11px;line-height:1.5;margin-top:6px" data-i18n="tz.hint">Влияет на ось времени, таблицу и CSV-экспорт вкладки «Мониторинг» и на время на экране платы.</div>
+<div class="mut" id="tz-status" style="font-size:11px;margin-top:7px;text-align:center;min-height:14px"></div>
+</section>
+</div>
+
+</div>
+</div>
+
+<script>
+"use strict";
+var DICT={
+ ru:{
+  "page.title":"AtomSpectra · Система",
+  "device":"Прибор",
+  "nav.spectrum":"Спектр","nav.waterfall":"Водопад","nav.monitor":"Мониторинг","nav.saved":"Файлы","nav.system":"Система","nav.service":"Сервис",
+  "heap.title":"Свободная память (heap)","heap.minSince":"мин. с момента старта:",
+  "cpu.title":"CPU спектрометра","cpu.src":"из <code>/api/spectrum.json</code>: поле <code>cpu</code>",
+  "flash.title":"Flash (LittleFS)","flash.used":"занято:",
+  "unit.kb":"КБ","unit.mb":"МБ",
+  "esp.chip":"Чип","esp.flashPsram":"Flash / PSRAM","esp.flashPsramVal":"16 МБ / 8 МБ",
+  "esp.fw":"Прошивка",
+  "esp.uptime":"Uptime","esp.freeHeap":"Free heap","esp.minHeap":"Min free heap",
+  "wifi.state":"Состояние","wifi.signal":"Уровень сигнала","wifi.reset":"Сбросить WiFi (режим настройки)",
+  "wifi.connected":"подключено","wifi.disconnected":"не подключено",
+  "wifi.q.excellent":"отличный","wifi.q.good":"хороший","wifi.q.med":"средний","wifi.q.weak":"слабый","wifi.q.veryWeak":"очень слабый",
+  "dev.title":"Прибор · AtomSpectra","dev.serial":"Серийный №","dev.ver":"Версия прошивки",
+  "dev.ch":"Каналов","dev.cal":"Калибровка","dev.temp":"Темп. T1/T2/T3","dev.mode":"Режим",
+  "dev.reboot":"Перезагрузить прибор",
+  "dev.connected":"подключено","dev.disconnected":"отключено",
+  "dev.chipOk":"Спектрометр подключен","dev.chipOff":"Спектрометр отключен",
+  "batt.title":"Батарея (CG_Charger_BQ-2v0)","batt.otg":"DC-DC","batt.notFound":"Модуль не обнаружен на шине I2C. Если он должен быть подключён — проверьте питание, SDA/SCL и подтяжки.",
+  "tft.notFound":"Дисплей не подключён.","sd.card":"SD-карта дисплея","sd.none":"нет (не найдена или не FAT32)","sd.info":"свободно %1 из %2","sd.gb":"ГБ","tft.touch":"Тачскрин дисплея","tft.calOk":"откалиброван","tft.calNo":"не откалиброван",
+  "tft.calBtn":"Откалибровать дисплей","tft.calStarted":"Калибровка запущена: на дисплее касайтесь центра крестиков по очереди.",
+  "tft.calFail":"Не удалось запустить калибровку.",
+  "batt.status":"Статус питания","batt.voltage":"Напряжение АКБ","batt.vbus":"Внешнее питание","batt.vbusV":"Напряжение V-IN USB","batt.faults":"Состояние системы питания","batt.chargeLevel":"Уровень заряда","batt.iinlim":"Ток заряда",
+  "batt.st.charging":"Заряд идёт","batt.st.done":"АКБ Заряжен","batt.st.onBatt":"Работа от АКБ","batt.st.idle":"Ожидание",
+  "batt.vbus.present":"подано","batt.vbus.absent":"нет",
+  "batt.otg.active":"активен","batt.otg.inactive":"неактивен",
+  "batt.faults.none":"в норме",
+  "batt.fault.wd":"сброшен watchdog-таймер I2C","batt.fault.boost":"ошибка OTG/boost","batt.fault.bat":"перенапряжение АКБ (BATOVP)",
+  "batt.fault.chrg.input":"ошибка входного питания","batt.fault.chrg.thermal":"тепловое отключение","batt.fault.chrg.timer":"истёк таймер безопасности заряда",
+  "batt.fault.ntc.cold":"термистор: слишком холодно (TS Cold)","batt.fault.ntc.hot":"термистор: слишком горячо (TS Hot)",
+  "tcp.title":"TCP-мост (serial-over-WiFi)","tcp.port":"Порт",
+  "tcp.hint":"BecqMoni / AtomSpectra на ПК подключаются к <span id=\"tcp-addr\" style=\"color:#aeb6a8\">—</span> вместо COM-порта.",
+  "tcp.clientConnected":"клиент подключён","tcp.free":"свободен",
+  "btn.rebootEsp":"Reboot ESP","btn.refresh":"Обновить",
+  "boot.titleBoot":"Старт платы","boot.secSpec":"Спектр","boot.secWf":"Водопад",
+  "boot.titleSpec":"Старт платы · Спектр",
+  "boot.titleWf":"Старт платы · Водопад",
+  "boot.asSpec":"Автозапуск набора спектра",
+  "boot.asWf":"Автозапуск записи водопада",
+  "boot.clrSpec":"Очищать спектр при старте",
+  "boot.calAlways":"Всегда читать калибровку с прибора при старте набора","boot.calHint":"Без галочки калибровка читается с прибора, только если на плате она не задана. Действует сразу, без перезагрузки.",
+  "ota.built":"Сборка (хэш)","ota.part":"Раздел прошивки","ota.title":"Загрузить прошивку по WiFi","ota.pick":"Выбрать .bin","ota.upload":"Записать и перезагрузить","ota.mb":"МБ",
+  "ota.notBin":"Нужен файл atomspectra_gw.bin из build/","ota.confirm":"Записать %1 и перезагрузить плату? Набор спектра и запись водопада продолжатся после перезагрузки.",
+  "ota.sending":"Передача %1%…","ota.checking":"Плата проверяет образ…","ota.done":"Записано в %1 — плата перезагружается…","ota.fail":"Не записано: ","ota.netErr":"Связь оборвалась — прошивка не изменена",
+  "ota.ok":"Готово: %1, сборка %2, раздел %3","ota.noBack":"Плата не ответила за 2 минуты — проверьте её вручную","ota.noPart":"На плате нет разделов OTA — один раз прошейте её по USB","ota.notImage":"Это не прошивка для ESP32-S3 (нужен build/atomspectra_gw.bin)",
+  "boot.clrWf":"Очищать водопад при старте",
+  "boot.hint":"Применяется один раз при включении / перезагрузке платы. По умолчанию всё выключено.",
+  "boot.save":"Сохранить","boot.saved":"Сохранено","boot.saveErr":"Ошибка сохранения",
+  "boot.exportTitle":"Экспорт файлов","boot.exportPrefix":"Префикс имени файлов",
+  "boot.exportHint":"Добавляется в начало имени всех выгрузок (спектр, водопад, backup). Пусто — обычные имена. Разрешены латиница, цифры, «_» и «-».",
+  "dose.title":"Мощность дозы","dose.label":"Коэффициент k (µSv·h⁻¹/cps)","dose.hint":"0 — мощность дозы не записывается (NaN в файле). Сохраняется в NVS.","dose.save":"Сохранить","dose.saved":"Сохранено","dose.saveErr":"Ошибка",
+  "dose.curveLabel":"Кривая мощности дозы","dose.curveNone":"Кривая не загружена (scalar k)","dose.curveHint":"CSV: channel,k_factor (до 512 точек, без заголовка). Приоритет над scalar k.","dose.curveLoad":"Загрузить CSV","dose.curveClear":"Сбросить кривую","dose.curveLoaded":"Кривая загружена (%1 точек)","dose.curveOk":"Загружено: %1 точек","dose.curveClearOk":"Кривая сброшена","dose.curveErr":"Ошибка загрузки","dose.curveNoFile":"Выберите CSV файл",
+  "cal.set":"задана (%1 коэфф., порядок %2)","cal.unset":"не задана",
+  "tz.title":"Часовой пояс","tz.label":"Пояс отображения","tz.hint":"Влияет на ось времени, таблицу и CSV-экспорт вкладки «Мониторинг» и на время на экране платы.","tz.auto":"Авто (браузер, %1)","tz.saved":"Сохранено: %1",
+  "confirm.rebootDev":"Перезагрузить прибор?","confirm.rebootEsp":"Перезагрузить ESP32?","confirm.resetWifi":"Сбросить WiFi и войти в режим настройки?",
+  "field.title":"Полевой режим · Время","field.mode":"Режим сети","field.apSsid":"Точка доступа","field.apClients":"Подключено телефонов","field.timeSrc":"Источник времени","field.setTime":"Установить время с телефона","field.timeHint":"В полевом режиме (без интернета) время берётся с телефона. Кнопка задаёт его вручную.","field.apPassTitle":"Пароль полевой точки доступа","field.apPassSave":"Сменить пароль AP (перезагрузка)","field.modeSta":"Домашняя сеть (Indoor)","field.modeAp":"Полевой AP (Outdoor)","field.modeSetup":"Настройка","field.modeApForced":"Outdoor (полевой AP, принудительно)","field.modeApFallback":"Outdoor (полевой AP, fallback)","field.passDefaultWarn":"Пароль AP — публичный по умолчанию; для людных мест смени пароль.","field.srcNone":"нет (1970)","field.srcBrowser":"браузер (авто)","field.srcManual":"ручной","field.srcRtc":"часы DS3231","field.rtc":"Часы DS3231","field.rtcNo":"не найдены","field.rtcOk":"хранят время","field.rtcInvalid":"время сбито — задайте с телефона","field.passChanged":"Пароль сохранён, перезагрузка...","field.passShort":"Минимум 8 символов","field.confirmPass":"Сменить пароль точки доступа? Плата перезагрузится.","mode.toIndoor":"Вернуться в Indoor","mode.toOutdoor":"Переключить в Outdoor","mode.confirmOut":"Переключить в полевой режим (Outdoor)? Плата перезагрузится, поднимет точку доступа AtomSpectra-Outdoor, текущее подключение прервётся.","mode.confirmIn":"Вернуться в домашний режим (Indoor)? Плата перезагрузится и подключится к домашней сети.",
+  "up.d":"д","up.h":"ч","up.m":"м","up.s":"с",
+  "tc":"TC"
+ },
+ en:{
+  "page.title":"AtomSpectra · System",
+  "device":"Device",
+  "nav.spectrum":"Spectrum","nav.waterfall":"Waterfall","nav.monitor":"Monitoring","nav.saved":"Files","nav.system":"System","nav.service":"Service",
+  "heap.title":"Free memory (heap)","heap.minSince":"min since boot:",
+  "cpu.title":"Spectrometer CPU","cpu.src":"from <code>/api/spectrum.json</code>: field <code>cpu</code>",
+  "flash.title":"Flash (LittleFS)","flash.used":"used:",
+  "unit.kb":"KB","unit.mb":"MB",
+  "esp.chip":"Chip","esp.flashPsram":"Flash / PSRAM","esp.flashPsramVal":"16 MB / 8 MB",
+  "esp.fw":"Firmware",
+  "esp.uptime":"Uptime","esp.freeHeap":"Free heap","esp.minHeap":"Min free heap",
+  "wifi.state":"State","wifi.signal":"Signal level","wifi.reset":"Reset WiFi (setup mode)",
+  "wifi.connected":"connected","wifi.disconnected":"disconnected",
+  "wifi.q.excellent":"excellent","wifi.q.good":"good","wifi.q.med":"fair","wifi.q.weak":"weak","wifi.q.veryWeak":"very weak",
+  "dev.title":"Device · AtomSpectra","dev.serial":"Serial №","dev.ver":"Firmware version",
+  "dev.ch":"Channels","dev.cal":"Calibration","dev.temp":"Temp. T1/T2/T3","dev.mode":"Mode",
+  "dev.reboot":"Reboot device",
+  "dev.connected":"connected","dev.disconnected":"disconnected",
+  "dev.chipOk":"Spectrometer connected","dev.chipOff":"Spectrometer disconnected",
+  "batt.title":"Battery (CG_Charger_BQ-2v0)","batt.otg":"DC-DC","batt.notFound":"Module not found on the I2C bus. If it should be connected, check power, SDA/SCL and pull-ups.",
+  "tft.notFound":"Display not connected.","sd.card":"Display SD card","sd.none":"none (not found or not FAT32)","sd.info":"%1 free of %2","sd.gb":"GB","tft.touch":"Display touchscreen","tft.calOk":"calibrated","tft.calNo":"not calibrated",
+  "tft.calBtn":"Calibrate display","tft.calStarted":"Calibration started: on the display, tap the centre of each cross in turn.",
+  "tft.calFail":"Couldn't start calibration.",
+  "batt.status":"Power status","batt.voltage":"Battery voltage","batt.vbus":"External power","batt.vbusV":"V-IN USB voltage","batt.faults":"Power system status","batt.chargeLevel":"Charge level","batt.iinlim":"Charge current",
+  "batt.st.charging":"Charging","batt.st.done":"Battery charged","batt.st.onBatt":"Running on battery","batt.st.idle":"Idle",
+  "batt.vbus.present":"present","batt.vbus.absent":"none",
+  "batt.otg.active":"active","batt.otg.inactive":"inactive",
+  "batt.faults.none":"normal",
+  "batt.fault.wd":"I2C watchdog timer expired","batt.fault.boost":"OTG/boost fault","batt.fault.bat":"battery overvoltage (BATOVP)",
+  "batt.fault.chrg.input":"input fault","batt.fault.chrg.thermal":"thermal shutdown","batt.fault.chrg.timer":"charge safety timer expired",
+  "batt.fault.ntc.cold":"thermistor: too cold (TS Cold)","batt.fault.ntc.hot":"thermistor: too hot (TS Hot)",
+  "tcp.title":"TCP bridge (serial-over-WiFi)","tcp.port":"Port",
+  "tcp.hint":"BecqMoni / AtomSpectra on PC connect to <span id=\"tcp-addr\" style=\"color:#aeb6a8\">—</span> instead of COM port.",
+  "tcp.clientConnected":"client connected","tcp.free":"free",
+  "btn.rebootEsp":"Reboot ESP","btn.refresh":"Refresh",
+  "boot.titleBoot":"Board start","boot.secSpec":"Spectrum","boot.secWf":"Waterfall",
+  "boot.titleSpec":"Board start · Spectrum",
+  "boot.titleWf":"Board start · Waterfall",
+  "boot.asSpec":"Autostart spectrum acquisition",
+  "boot.asWf":"Autostart waterfall recording",
+  "boot.clrSpec":"Clear spectrum on start",
+  "boot.calAlways":"Always read calibration from the device when acquisition starts","boot.calHint":"Unchecked: calibration is read from the device only if none is set on the board. Takes effect immediately.",
+  "ota.built":"Build (hash)","ota.part":"Firmware partition","ota.title":"Upload firmware over WiFi","ota.pick":"Choose .bin","ota.upload":"Write and reboot","ota.mb":"MB",
+  "ota.notBin":"Expected atomspectra_gw.bin from build/","ota.confirm":"Write %1 and reboot the board? Spectrum acquisition and waterfall recording resume after reboot.",
+  "ota.sending":"Uploading %1%…","ota.checking":"Board is verifying the image…","ota.done":"Written to %1 — board is rebooting…","ota.fail":"Not written: ","ota.netErr":"Connection lost — firmware unchanged",
+  "ota.ok":"Done: %1, build %2, partition %3","ota.noBack":"Board did not answer within 2 minutes — check it manually","ota.noPart":"No OTA partitions on the board — flash it over USB once","ota.notImage":"Not an ESP32-S3 firmware image (need build/atomspectra_gw.bin)",
+  "boot.clrWf":"Clear waterfall on start",
+  "boot.hint":"Applied once on power-up / board reboot. Everything is off by default.",
+  "boot.save":"Save","boot.saved":"Saved","boot.saveErr":"Save error",
+  "boot.exportTitle":"File export","boot.exportPrefix":"Filename prefix",
+  "boot.exportHint":"Prepended to every export filename (spectrum, waterfall, backup). Empty — default names. Allowed: Latin letters, digits, «_» and «-».",
+  "dose.title":"Dose rate","dose.label":"Coefficient k (µSv·h⁻¹/cps)","dose.hint":"0 — dose rate not recorded (NaN in file). Stored in NVS.","dose.save":"Save","dose.saved":"Saved","dose.saveErr":"Error",
+  "dose.curveLabel":"Dose rate curve","dose.curveNone":"No curve loaded (scalar k)","dose.curveHint":"CSV: channel,k_factor (up to 512 points, no header). Priority over scalar k.","dose.curveLoad":"Load CSV","dose.curveClear":"Clear curve","dose.curveLoaded":"Curve loaded (%1 points)","dose.curveOk":"Loaded: %1 points","dose.curveClearOk":"Curve cleared","dose.curveErr":"Load error","dose.curveNoFile":"Select a CSV file",
+  "cal.set":"set (%1 coef., order %2)","cal.unset":"not set",
+  "tz.title":"Time zone","tz.label":"Display zone","tz.hint":"Affects the time axis, table and CSV export of the Monitoring tab and the time on the board display.","tz.auto":"Auto (browser, %1)","tz.saved":"Saved: %1",
+  "confirm.rebootDev":"Reboot device?","confirm.rebootEsp":"Reboot ESP32?","confirm.resetWifi":"Reset WiFi and enter setup mode?",
+  "field.title":"Field mode · Time","field.mode":"Network mode","field.apSsid":"Access point","field.apClients":"Phones connected","field.timeSrc":"Time source","field.setTime":"Set time from phone","field.timeHint":"In field mode (no internet) the time comes from the phone. This button sets it manually.","field.apPassTitle":"Field access point password","field.apPassSave":"Change AP password (reboot)","field.modeSta":"Home network (Indoor)","field.modeAp":"Field AP (Outdoor)","field.modeSetup":"Setup","field.modeApForced":"Outdoor (field AP, forced)","field.modeApFallback":"Outdoor (field AP, fallback)","field.passDefaultWarn":"AP password is public by default; change it for crowded places.","field.srcNone":"none (1970)","field.srcBrowser":"browser (auto)","field.srcManual":"manual","field.srcRtc":"DS3231 clock","field.rtc":"DS3231 clock","field.rtcNo":"not found","field.rtcOk":"keeping time","field.rtcInvalid":"time lost — set it from the phone","field.passChanged":"Password saved, rebooting...","field.passShort":"Minimum 8 characters","field.confirmPass":"Change access point password? The board will reboot.","mode.toIndoor":"Switch to Indoor","mode.toOutdoor":"Switch to Outdoor","mode.confirmOut":"Switch to field mode (Outdoor)? The board will reboot, bring up the AtomSpectra-Outdoor access point, and the current connection will drop.","mode.confirmIn":"Return to home mode (Indoor)? The board will reboot and connect to the home network.",
+  "up.d":"d","up.h":"h","up.m":"m","up.s":"s",
+  "tc":"TC"
+ }
+};
+var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
+function t(k){var d=DICT[LANG]||DICT.ru;return(d[k]!==undefined)?d[k]:(DICT.ru[k]||k);}
+function tfmt(k){var s=t(k);for(var i=1;i<arguments.length;i++)s=s.replace("%"+i,arguments[i]);return s;}
+function applyI18n(){
+ document.querySelectorAll("[data-i18n]").forEach(function(el){
+  var k=el.getAttribute("data-i18n"); el.textContent=t(k);
+ });
+ document.querySelectorAll("[data-i18n-html]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-html"); el.innerHTML=t(k);
+ });
+ document.documentElement.lang=LANG;
+ var b=document.getElementById("langBtn"); if(b)b.textContent=(LANG==="ru")?"EN":"RU";
+ // tcp.hint innerHTML re-inserts a fresh <span id="tcp-addr"> — restore its value
+ var ta=document.getElementById("tcp-addr"); if(ta)ta.textContent=location.hostname+":8234";
+}
+function setLang(l){
+ if(l!=="ru"&&l!=="en")l="ru";
+ LANG=l; try{localStorage.setItem("aswf-lang",l);}catch(e){}
+ applyI18n();
+ try{refreshSystem();refreshDevice();refreshSpectrum();initTz();}catch(e){}
+}
+
+var csrfToken="";
+var heap=[],cpu=[],flash=[];
+var curFwVer="";
+// #OTA-1: загрузка прошивки по WiFi. XHR, а не fetch — нужен прогресс отправки.
+// Проверка релизов апстрима на GitHub убрана (запрос 2026-10-06): их прошивка
+// затёрла бы нашу.
+var otaSupported=false, otaBusy=false;
+function otaPicked(quiet){
+ var f=document.getElementById("ota-file").files[0];
+ document.getElementById("ota-name").textContent=f?(f.name+" · "+(f.size/1048576).toFixed(2)+" "+t("ota.mb")):"—";
+ document.getElementById("ota-btn").disabled=!f||!otaSupported||otaBusy;
+ if(!quiet&&f&&!/\.bin$/i.test(f.name))document.getElementById("ota-msg").textContent=t("ota.notBin");
+}
+function otaMsg(txt,col){var m=document.getElementById("ota-msg");m.textContent=txt;m.style.color=col||"";}
+async function otaUpload(){
+ var f=document.getElementById("ota-file").files[0];
+ if(!f||otaBusy)return;
+ // Заголовок образа ESP: байт 0 = 0xE9, chip_id (байты 12-13) = 9 (ESP32-S3) — проверка до отправки
+ try{ var h=new Uint8Array(await f.slice(0,16).arrayBuffer());
+  if(h.length<16||h[0]!==0xE9||(h[12]|(h[13]<<8))!==9){ otaMsg(t("ota.notImage"),"#ff8a82"); return; } }catch(e){}
+ if(!confirm(tfmt("ota.confirm",f.name)))return;
+ otaBusy=true; document.getElementById("ota-btn").disabled=true;
+ var bar=document.getElementById("ota-bar"); bar.style.width="0%";
+ var tok=""; try{tok=(await(await fetch("/api/csrf-token")).json()).token||"";}catch(e){}
+ var oldUp=null; try{oldUp=(await(await fetch("/api/system")).json()).uptime_sec;}catch(e){}
+ var x=new XMLHttpRequest();
+ x.open("POST","/api/ota");
+ x.setRequestHeader("X-CSRF-Token",tok);
+ x.setRequestHeader("Content-Type","application/octet-stream");
+ x.upload.onprogress=function(ev){ if(ev.lengthComputable){ var p=ev.loaded/ev.total*100; bar.style.width=p.toFixed(1)+"%"; otaMsg(p<100?tfmt("ota.sending",p.toFixed(0)):t("ota.checking")); } };
+ x.onerror=function(){ otaBusy=false; otaMsg(t("ota.netErr"),"#ff8a82"); otaPicked(true); };
+ x.onload=function(){
+  var j={}; try{j=JSON.parse(x.responseText);}catch(e){}
+  if(x.status===200&&j.ok){ otaMsg(tfmt("ota.done",j.partition||"?"),"var(--accent)"); otaWaitReboot(oldUp); }
+  else{ otaBusy=false; otaMsg(t("ota.fail")+(j.err||("HTTP "+x.status)),"#ff8a82"); otaPicked(true); }
+ };
+ otaMsg(tfmt("ota.sending",0));
+ x.send(f);
+}
+async function otaWaitReboot(oldUp){
+ var t0=Date.now();
+ while(Date.now()-t0<120000){
+  await new Promise(function(r){setTimeout(r,2500);});
+  try{
+   var r=await(await fetch("/api/system",{cache:"no-store"})).json();
+   if(oldUp==null||r.uptime_sec<oldUp){
+    otaBusy=false;
+    otaMsg(tfmt("ota.ok",r.fw_version||"?",r.fw_built||"",r.app_part||"?"),"var(--accent)");
+    document.getElementById("ota-file").value=""; otaPicked(true);
+    return;
+   }
+  }catch(e){}
+ }
+ otaBusy=false; otaMsg(t("ota.noBack"),"#f0c45a");
+}
+function ac(){return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';}
+
+async function loadCsrf(){try{var r=await(await fetch("/api/csrf-token")).json();csrfToken=r.token||""}catch(e){}}
+function post(url,opts){opts=opts||{};opts.method="POST";opts.headers=Object.assign({},opts.headers||{},{"X-CSRF-Token":csrfToken});return fetch(url,opts)}
+
+function fmtKB(n){return (n/1024).toFixed(0)}
+function fmtUp(s){var d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60),x=s%60;
+ var p=[]; if(d>0)p.push(d+t("up.d")); if(d>0||h>0)p.push(h+t("up.h")); p.push(m+t("up.m")); if(d===0)p.push(x+t("up.s")); return p.join(" ");}
+
+function spark(id,hist,color){
+ var cv=document.getElementById(id);if(!cv||hist.length<2)return;
+ var ctx=cv.getContext('2d'),w=cv.width,h=cv.height,mn=1e9,mx=-1e9,i;
+ for(i=0;i<hist.length;i++){if(hist[i]<mn)mn=hist[i];if(hist[i]>mx)mx=hist[i];}
+ if(mx-mn<1)mx=mn+1;
+ var pad=8; function yO(v){return pad+(h-2*pad)*(1-(v-mn)/(mx-mn));}
+ ctx.clearRect(0,0,w,h);
+ ctx.strokeStyle='rgba(255,255,255,.05)';
+ for(var k=0;k<=2;k++){var y=pad+(h-2*pad)*k/2;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+ var n=hist.length;
+ ctx.beginPath();
+ for(i=0;i<n;i++){var x=i/(n-1)*w,yy=yO(hist[i]);i?ctx.lineTo(x,yy):ctx.moveTo(x,yy);}
+ ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fillStyle=color+'22';ctx.fill();
+ ctx.beginPath();
+ for(i=0;i<n;i++){var x2=i/(n-1)*w,y2=yO(hist[i]);i?ctx.lineTo(x2,y2):ctx.moveTo(x2,y2);}
+ ctx.strokeStyle=color;ctx.lineWidth=1.4;ctx.stroke();
+}
+
+// #TFT-21: дисплей платы и калибровка его тача (процедура — на самом экране).
+function renderTft(r){
+ var has=!!r.tft;
+ document.getElementById("tft-absent").style.display=has?"none":"";
+ document.getElementById("tft-details").style.display=has?"":"none";
+ if(has)document.getElementById("tft-cal-kv").textContent=r.tft_cal?t("tft.calOk"):t("tft.calNo");
+ // #SD-1: слот microSD модуля дисплея
+ var sd=document.getElementById("sd-kv");
+ if(!r.sd_present){ sd.textContent=t("sd.none"); }
+ else{ var gb=function(b){return (b/1073741824).toFixed(1)+" "+t("sd.gb");};
+  sd.textContent=tfmt("sd.info",gb(r.sd_free),gb(r.sd_total))+(r.sd_name?" · "+r.sd_name:""); }
+}
+async function calibrateTft(){
+ var m=document.getElementById("tft-cal-msg");
+ try{
+  var r=await(await post("/api/tft/calibrate")).json();
+  m.textContent=r.ok?t("tft.calStarted"):t("tft.calFail");
+ }catch(e){ m.textContent=t("tft.calFail"); }
+}
+function renderBattery(r){
+ var bc=document.getElementById("batt-chip");
+ var absentEl=document.getElementById("batt-absent"), detEl=document.getElementById("batt-details");
+ if(!r.batt_present){
+  if(bc)bc.style.display="none";
+  if(absentEl)absentEl.style.display="";
+  if(detEl)detEl.style.display="none";
+  return;
+ }
+ var bpct=(typeof r.batt_percent==="number")?Math.max(0,Math.min(100,Math.round(r.batt_percent))):0;
+ if(bc){
+  bc.style.display="";
+  var fillEl=document.getElementById("batt-fill");
+  if(fillEl){fillEl.style.width=bpct+"%";fillEl.style.background=bpct<20?"#ff8a82":bpct<50?"#f0c45a":"var(--accent)";}
+  var pctEl=document.getElementById("batt-pct");
+  if(pctEl)pctEl.textContent=(r.batt_charging?"\u26a1":"")+bpct+"%";
+  var vTxt=(typeof r.batt_voltage==="number")?r.batt_voltage.toFixed(2)+"V":"";
+  bc.title=t("batt.title")+": "+vTxt;
+ }
+ if(absentEl)absentEl.style.display="none";
+ if(detEl)detEl.style.display="";
+ var statusTxt=r.batt_charging?t("batt.st.charging"):r.batt_chg_done?t("batt.st.done"):(r.batt_vbus?t("batt.st.idle"):t("batt.st.onBatt"));
+ document.getElementById("batt-status-kv").textContent=statusTxt;
+ document.getElementById("batt-v-kv").textContent=(typeof r.batt_voltage==="number"?r.batt_voltage.toFixed(2):"—")+" V";
+ document.getElementById("batt-vbus-kv").textContent=r.batt_vbus?t("batt.vbus.present"):t("batt.vbus.absent");
+ // #PWR-2: отдельного пина OTG у нас на GPIO нет — статус "буст активен" читаем
+ // из того же регистра BQ25895, что и тип источника (VBUS_STAT==OTG значит чип
+ // сейчас поднимает 5В из АКБ, а не пропускает VBUS насквозь).
+ document.getElementById("batt-otg-kv").textContent=(r.batt_vbus_stat===7)?t("batt.otg.active"):t("batt.otg.inactive");
+ document.getElementById("batt-vbusv-kv").textContent=(r.batt_vbus&&typeof r.batt_vbus_voltage==="number")?r.batt_vbus_voltage.toFixed(2)+" V":"—";
+ // #PWR-6: не перетираем позицию ползунка, пока пользователь его тащит —
+ // иначе опрос раз в 2с будет "отдёргивать" палец обратно к прошлому значению.
+ var iSlider=document.getElementById("batt-iinlim-slider"), iVal=document.getElementById("batt-iinlim-val");
+ if(iSlider&&document.activeElement!==iSlider&&typeof r.batt_iinlim_ma==="number"){
+  var clamped=Math.max(100,Math.min(2000,Math.round(r.batt_iinlim_ma/100)*100));
+  iSlider.value=clamped;
+  if(iVal)iVal.textContent=r.batt_iinlim_ma+(LANG==="ru"?" мА":" mA");
+ }
+ var faults=[];
+ if(r.batt_fault_wd)faults.push(t("batt.fault.wd"));
+ if(r.batt_fault_boost)faults.push(t("batt.fault.boost"));
+ if(r.batt_fault_bat)faults.push(t("batt.fault.bat"));
+ if(r.batt_fault_chrg===1)faults.push(t("batt.fault.chrg.input"));
+ else if(r.batt_fault_chrg===2)faults.push(t("batt.fault.chrg.thermal"));
+ else if(r.batt_fault_chrg===3)faults.push(t("batt.fault.chrg.timer"));
+ // #PWR-8: NTC_FAULT[2:0] — buck mode: 001=TS Cold, 010=TS Hot; boost mode: 101=TS Cold, 110=TS Hot.
+ // Раньше считывался бэкендом (batt_fault_ntc), но не выводился здесь — заряд мог молча стоять
+ // в "Ожидании" из-за температуры АКБ вне диапазона без единой видимой причины на странице.
+ if(r.batt_fault_ntc===1||r.batt_fault_ntc===5)faults.push(t("batt.fault.ntc.cold"));
+ else if(r.batt_fault_ntc===2||r.batt_fault_ntc===6)faults.push(t("batt.fault.ntc.hot"));
+ var faultsEl=document.getElementById("batt-faults-kv");
+ faultsEl.textContent=faults.length?faults.join(", "):t("batt.faults.none");
+ faultsEl.style.color=faults.length?"#ff8a82":"";
+ var pctEl2=document.getElementById("batt-pct2"); if(pctEl2)pctEl2.textContent=bpct+"%";
+ var fi=document.getElementById("batt-fi");
+ if(fi){fi.style.width=bpct+"%";fi.style.background=bpct<20?"#ff8a82":bpct<50?"#f0c45a":"var(--accent)";}
+}
+async function refreshSystem(){
+ try{
+  var r=await(await fetch("/api/system")).json();
+  var heapKB=Math.round((r.free_heap||0)/1024);
+  heap.push(heapKB); if(heap.length>80)heap.shift();
+  document.getElementById("heap-cur").textContent=heapKB;
+  document.getElementById("heap-min").textContent=Math.round((r.min_free_heap||0)/1024);
+  document.getElementById("heap-kv").textContent=heapKB+" "+t("unit.kb");
+  document.getElementById("heap-min-kv").textContent=Math.round((r.min_free_heap||0)/1024)+" "+t("unit.kb");
+  spark("heapc",heap,ac());
+  document.getElementById("up").textContent=fmtUp(r.uptime_sec||0);
+  curFwVer=r.fw_version||"";
+  document.getElementById("fw-ver").textContent=curFwVer||"—";
+  document.getElementById("fw-built").textContent=r.fw_built||"—";   // #OTA-1
+  document.getElementById("fw-part").textContent=r.app_part||"—";
+  otaSupported=!!r.ota_supported;
+  if(!otaSupported&&!otaBusy)document.getElementById("ota-msg").textContent=t("ota.noPart");
+  otaPicked(true);
+  var ft=r.flash_total||0, fu=r.flash_used||0;
+  var pct=ft>0?(fu/ft*100):0;
+  var flashSub=fmtKB(fu)+" / "+fmtKB(ft)+" "+t("unit.kb")+" ("+pct.toFixed(1)+"%)";
+  document.getElementById("flash-pct").textContent=flashSub;
+  var ffi=document.getElementById("flash-fi");
+  ffi.style.width=pct.toFixed(1)+"%";
+  ffi.style.background=pct>90?"#ff8a82":pct>70?"#f0c45a":"var(--accent)";
+  // #UI-30: график Flash (стиль как у памяти)
+  var fuKB=Math.round(fu/1024);
+  flash.push(fuKB); if(flash.length>80)flash.shift();
+  document.getElementById("flash-cur").textContent=fuKB;
+  document.getElementById("flash-sub").textContent=flashSub;
+  spark("flashc",flash,ac());
+  if(r.wifi_connected){
+   document.getElementById("wifi-state").innerHTML='<span style="color:var(--accent)">'+t("wifi.connected")+'</span>';
+   document.getElementById("wifi-ssid").textContent=r.ssid||"—";
+   document.getElementById("wifi-ip").textContent=r.wifi_ip||"—";
+   var rssi=r.rssi;
+   if(typeof rssi==="number"){
+    document.getElementById("wifi-rssi").textContent=rssi+" dBm";
+    var qPct=Math.max(0,Math.min(100,(rssi+100)*100/60));
+    var qDesc=rssi>=-55?t("wifi.q.excellent"):rssi>=-65?t("wifi.q.good"):rssi>=-75?t("wifi.q.med"):rssi>=-85?t("wifi.q.weak"):t("wifi.q.veryWeak");
+    document.getElementById("rssi-desc").textContent=rssi+" dBm · "+qDesc;
+    var rfi=document.getElementById("rssi-fi");
+    rfi.style.width=qPct.toFixed(0)+"%";
+    rfi.style.background=qPct>=70?"var(--accent)":qPct>=40?"#f0c45a":"#ff8a82";
+   }else{
+    document.getElementById("wifi-rssi").textContent="—";
+   }
+  }else{
+   document.getElementById("wifi-state").innerHTML='<span style="color:#ff8a82">'+t("wifi.disconnected")+'</span>';
+   document.getElementById("wifi-ssid").textContent="—";
+   document.getElementById("wifi-ip").textContent="—";
+   document.getElementById("wifi-rssi").textContent="—";
+  }
+  renderBattery(r);
+  renderTft(r);
+  // #FIELD-6: режим сети, статус полевого AP, источник времени
+  var nm=r.net_mode||"sta"; window._netMode=nm;
+  var isAp = (nm==="field_ap");
+  document.getElementById("net-mode").textContent = nm==="setup"?t("field.modeSetup"):isAp?(r.ap_forced?t("field.modeApForced"):t("field.modeApFallback")):t("field.modeSta");
+  var mtb=document.getElementById("mode-toggle-btn");
+  if(mtb){ mtb.textContent = isAp?t("mode.toIndoor"):t("mode.toOutdoor"); mtb.style.display = (nm==="setup")?"none":""; }
+  document.getElementById("ap-ssid-row").style.display = isAp?"":"none";
+  document.getElementById("ap-clients-row").style.display = isAp?"":"none";
+  if(isAp){
+   document.getElementById("ap-ssid").textContent = r.ap_ssid||"—";
+   document.getElementById("ap-clients").textContent = (typeof r.ap_clients==="number"&&r.ap_clients>=0)?r.ap_clients:"—";
+  }
+  // #SEC-2 (A5): предупредить о публичном дефолт-пароле только когда AP реально поднят
+  document.getElementById("ap-pass-warn").style.display = (isAp && r.ap_pass_default)?"":"none";
+  var ts=r.time_source||"none";
+  document.getElementById("time-src").textContent = ts==="sntp"?"SNTP":ts==="browser"?t("field.srcBrowser"):ts==="manual"?t("field.srcManual"):ts==="rtc"?t("field.srcRtc"):t("field.srcNone");
+  // #RTC-1: модуль часов на I2C — есть ли и хранит ли время
+  document.getElementById("rtc-stat").textContent = !r.rtc_present?t("field.rtcNo"):r.rtc_valid?t("field.rtcOk"):t("field.rtcInvalid");
+  var devDot=document.getElementById("dev-dot"), devStat=document.getElementById("dev-stat"), devChip=document.getElementById("dev-chip");
+  devChip.style.visibility="";
+  if(r.usb_connected){
+   devDot.classList.remove("off"); devStat.textContent=t("dev.chipOk"); devChip.classList.remove("warn"); devChip.classList.add("ok");
+   document.getElementById("dev-usb").innerHTML='<span style="color:var(--accent)">'+t("dev.connected")+'</span>';
+  }else{
+   devDot.classList.add("off"); devStat.textContent=t("dev.chipOff"); devChip.classList.add("warn"); devChip.classList.remove("ok");
+   document.getElementById("dev-usb").innerHTML='<span style="color:#ff8a82">'+t("dev.disconnected")+'</span>';
+  }
+  var tcpClient=!!r.tcp_client;
+  document.getElementById("tcp-state").innerHTML=tcpClient?'<span style="color:var(--accent)">'+t("tcp.clientConnected")+'</span>':'<span class="mut">'+t("tcp.free")+'</span>';
+  document.getElementById("tcp-addr").textContent=location.hostname+":8234";
+ }catch(e){}
+}
+
+async function refreshDevice(){
+ try{
+  var r=await(await fetch("/api/device")).json();
+  if(r.valid){
+   document.getElementById("dev-ver").textContent=r.version||"—";
+   document.getElementById("dev-mode").textContent=(r.mode!==undefined?r.mode:"—")+(r.tc_on?" ("+t("tc")+")":"");
+   var tt=(r.t1!==undefined?r.t1:"—")+" / "+(r.t2!==undefined?r.t2:"—")+" / "+(r.t3!==undefined?r.t3:"—")+" °C";
+   document.getElementById("dev-t").textContent=tt;
+  }else{
+   document.getElementById("dev-ver").textContent="—";
+   document.getElementById("dev-mode").textContent="—";
+   document.getElementById("dev-t").textContent="—";
+  }
+  document.getElementById("dev-serial").textContent=r.serial||"—";
+  document.getElementById("dev-cal").textContent=r.calibration?tfmt("cal.set",r.calibration.length,(r.calib_order||(r.calibration.length-1))):t("cal.unset");
+ }catch(e){}
+}
+
+async function refreshSpectrum(){
+ try{
+  var r=await(await fetch("/api/spectrum.json")).json();
+  if(typeof r.cpu==="number"){
+   cpu.push(r.cpu); if(cpu.length>80)cpu.shift();
+   document.getElementById("cpu-cur").textContent=r.cpu;
+   spark("cpuc",cpu,'#f0c45a');
+  }
+  if(r.bins)document.getElementById("dev-ch").textContent=r.bins.length;
+ }catch(e){}
+}
+
+async function loadBootConfig(){
+ try{
+  var r=await(await fetch("/api/boot-config")).json();
+  document.getElementById("bc-as-spec").checked=!!r.autostart_spectrum;
+  document.getElementById("bc-as-wf").checked=!!r.autostart_waterfall;
+  document.getElementById("bc-clr-spec").checked=!!r.clear_spectrum;
+  document.getElementById("bc-clr-wf").checked=!!r.clear_waterfall;
+  document.getElementById("bc-cal-al").checked=!!r.calib_always;   // #CAL-1
+ }catch(e){}
+}
+async function saveBootConfig(statusId){
+ var s=document.getElementById(statusId||"bc-status-spec");
+ var body={
+  autostart_spectrum:document.getElementById("bc-as-spec").checked,
+  autostart_waterfall:document.getElementById("bc-as-wf").checked,
+  clear_spectrum:document.getElementById("bc-clr-spec").checked,
+  clear_waterfall:document.getElementById("bc-clr-wf").checked,
+  calib_always:document.getElementById("bc-cal-al").checked   // #CAL-1
+ };
+ try{
+  var r=await(await post("/api/boot-config",{headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json();
+  s.textContent=r.ok?t("boot.saved"):t("boot.saveErr");
+  s.style.color=r.ok?"var(--accent)":"#ff8a82";
+ }catch(e){ s.textContent=t("boot.saveErr"); s.style.color="#ff8a82"; }
+ setTimeout(function(){s.textContent="";},2500);
+}
+// #UI-38: часовой пояс отображения (localStorage aswf-tz: "auto" | смещение от UTC в минутах).
+// Читается вкладкой «Мониторинг» (ось X, таблица, CSV). #MON-2: и уходит на плату
+// (common-time.js, tz_min в POST /api/time) — для оси времени на экране платы.
+function pad2(n){return (n<10?"0":"")+n;}
+function tzOffLabel(min){var s=min<0?"-":"+",a=Math.abs(min);return "UTC"+s+pad2(Math.floor(a/60))+":"+pad2(a%60);}
+function initTz(){
+ var sel=document.getElementById("tz-sel"); if(!sel)return;
+ var cur="auto"; try{cur=localStorage.getItem("aswf-tz")||"auto";}catch(e){}
+ var browserOff=-new Date().getTimezoneOffset();
+ var html='<option value="auto">'+tfmt("tz.auto",tzOffLabel(browserOff))+'</option>';
+ for(var h=-12;h<=14;h++){var m=h*60;html+='<option value="'+m+'">'+tzOffLabel(m)+'</option>';}
+ sel.innerHTML=html; sel.value=cur;
+ if(sel.value!==cur)sel.value="auto"; // сохранённое значение вне списка — показать авто, localStorage не трогать
+}
+function saveTz(){
+ var sel=document.getElementById("tz-sel"),s=document.getElementById("tz-status");
+ var v=sel.value; try{localStorage.setItem("aswf-tz",v);}catch(e){}
+ if(window.aswfSyncTime)window.aswfSyncTime();
+ var off=(v==="auto")?-new Date().getTimezoneOffset():parseInt(v,10);
+ if(s){s.textContent=tfmt("tz.saved",tzOffLabel(off));s.style.color="var(--accent)";setTimeout(function(){s.textContent="";},2500);}
+}
+
+async function rebootDevice(){if(!confirm(t("confirm.rebootDev")))return;await post("/api/reboot-device");}
+async function rebootEsp(){if(!confirm(t("confirm.rebootEsp")))return;await post("/api/reboot-esp");}
+async function resetWifi(){if(!confirm(t("confirm.resetWifi")))return;await post("/api/wifi/reset");}
+// #FIELD-6: переключатель Indoor↔Outdoor (переехал сюда из шапки — см. #PWR-8).
+async function toggleMode(){
+ var cur=window._netMode||"sta";
+ var toOutdoor=(cur!=="field_ap");
+ if(!confirm(t(toOutdoor?"mode.confirmOut":"mode.confirmIn")))return;
+ try{await post("/api/net-mode",{headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:toOutdoor?"outdoor":"indoor"})});}catch(e){}
+}
+// #FIELD-5 (T11): ручная установка времени платы с телефона. manual=true → прошивка
+// примет безусловно (если SNTP не активен). В Indoor с рабочим SNTP запрос отклонится.
+async function setManualTime(){
+ try{
+  var inp=document.getElementById("manual-time-inp").value;
+  var ms=inp?new Date(inp).getTime():Date.now();  // datetime-local трактуется как локальное → getTime() = UTC ms
+  if(!ms||isNaN(ms))ms=Date.now();
+  var res=await(await post("/api/time",{headers:{"Content-Type":"application/json"},body:JSON.stringify({epoch_ms:ms,manual:true})})).json();
+  if(res&&res.accepted)document.getElementById("time-src").textContent=t("field.srcManual");
+ }catch(e){}
+}
+// #FIELD-7 (#SEC-2): смена пароля полевого AP. Пусто → сброс к дефолту; иначе ≥8 (WPA2).
+// Применяется после ребута (плата пересоздаёт AP с новым паролем).
+async function changeApPass(){
+ var v=document.getElementById("ap-pass-inp").value;
+ var st=document.getElementById("ap-pass-status");
+ if(v.length>0&&v.length<8){st.style.color="#ff8a82";st.textContent=t("field.passShort");return;}
+ if(!confirm(t("field.confirmPass")))return;
+ st.style.color="var(--accent)";st.textContent=t("field.passChanged");
+ try{await post("/api/ap-pass",{headers:{"Content-Type":"application/json"},body:JSON.stringify({password:v})});}catch(e){}
+}
+
+async function loadDoseK(){
+ try{
+  var r=await(await fetch("/api/waterfall/dose_k")).json();
+  var v=r.dose_k;
+  document.getElementById("dose-k-val").value=(typeof v==="number"&&isFinite(v)&&v>0)?v:0;
+ }catch(e){}
+}
+async function saveDoseK(statusId){
+ var s=document.getElementById(statusId||"dose-k-status");
+ var k=parseFloat(document.getElementById("dose-k-val").value)||0;
+ try{
+  var r=await(await post("/api/waterfall/dose_k",{headers:{"Content-Type":"application/json"},body:JSON.stringify({dose_k:k})})).json();
+  s.textContent=r.ok?t("dose.saved"):t("dose.saveErr");
+  s.style.color=r.ok?"var(--accent)":"#ff8a82";
+ }catch(e){ s.textContent=t("dose.saveErr"); s.style.color="#ff8a82"; }
+ setTimeout(function(){s.textContent="";},2500);
+}
+
+async function loadDoseCurveStatus(){
+ try{
+  var r=await(await fetch("/api/waterfall/dose_curve")).json();
+  var el=document.getElementById("dose-curve-stat");
+  if(!el)return;
+  if(r.n>0){
+   el.textContent=tfmt("dose.curveLoaded",r.n);
+   el.style.color="var(--accent)";
+  }else{
+   el.textContent=t("dose.curveNone");
+   el.style.color="";
+  }
+ }catch(e){}
+}
+async function loadDoseCurveFile(statusId){
+ var s=document.getElementById(statusId||"dose-curve-status");
+ var fi=document.getElementById("dose-curve-file");
+ if(!fi||!fi.files||!fi.files[0]){s.textContent=t("dose.curveNoFile");s.style.color="#f0c45a";setTimeout(function(){s.textContent="";},2500);return;}
+ var file=fi.files[0];
+ try{
+  var text=await file.text();
+  var r=await(await post("/api/waterfall/dose_curve",{headers:{"Content-Type":"text/plain"},body:text})).json();
+  if(r.ok){
+   s.textContent=tfmt("dose.curveOk",r.n);
+   s.style.color="var(--accent)";
+   await loadDoseCurveStatus();
+  }else{
+   s.textContent=t("dose.curveErr");
+   s.style.color="#ff8a82";
+  }
+ }catch(e){ s.textContent=t("dose.curveErr"); s.style.color="#ff8a82"; }
+ setTimeout(function(){s.textContent="";},3000);
+}
+async function clearDoseCurve(statusId){
+ var s=document.getElementById(statusId||"dose-curve-status");
+ try{
+  var r=await(await post("/api/waterfall/dose_curve/clear")).json();
+  if(r.ok){
+   s.textContent=t("dose.curveClearOk");
+   s.style.color="var(--accent)";
+   await loadDoseCurveStatus();
+  }else{
+   s.textContent=t("dose.curveErr");
+   s.style.color="#ff8a82";
+  }
+ }catch(e){ s.textContent=t("dose.curveErr"); s.style.color="#ff8a82"; }
+ setTimeout(function(){s.textContent="";},2500);
+}
+
+(async function(){
+ applyI18n();
+ initTz();
+ document.getElementById("langBtn").onclick=function(){setLang(LANG==="ru"?"en":"ru");};
+ await loadCsrf();
+ // #PWR-6: ползунок лимита входного тока — "input" только обновляет подпись
+ // вживую (не спамим I2C-запись на каждый пиксель драга), реальная отправка —
+ // на "change" (когда пользователь отпустил ползунок).
+ var iSlider=document.getElementById("batt-iinlim-slider"), iVal=document.getElementById("batt-iinlim-val");
+ if(iSlider){
+  iSlider.addEventListener("input",function(){
+   if(iVal)iVal.textContent=iSlider.value+(LANG==="ru"?" мА":" mA");
+  });
+  iSlider.addEventListener("change",async function(){
+   var ma=parseInt(iSlider.value,10);
+   try{
+    var r=await(await post("/api/battery/iinlim",{headers:{"Content-Type":"application/json"},body:JSON.stringify({ma:ma})})).json();
+    if(r.ok&&typeof r.iinlim_ma==="number"){
+     iSlider.value=Math.max(100,Math.min(2000,Math.round(r.iinlim_ma/100)*100));
+     if(iVal)iVal.textContent=r.iinlim_ma+(LANG==="ru"?" мА":" mA");
+    }
+   }catch(e){}
+  });
+ }
+ await refreshSystem();
+ await refreshDevice();
+ await refreshSpectrum();
+ await loadBootConfig();
+ await loadDoseK();
+ await loadDoseCurveStatus();
+ setInterval(refreshSystem,2000);
+ setInterval(refreshDevice,5000);
+ setInterval(refreshSpectrum,2000);
+})();
+</script>
+<script src="/common-time.js"></script>
+</body>
+</html>

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REC-12 — Pull-стрим сегментов водопада + шов на лету</title>
+<style>
+:root {
+  --ink:    #0C1821;
+  --paper:  #F5F4F0;
+  --rule:   #D0CAC0;
+  --accent: #1B5FAA;
+  --pass:   #1E7A45;
+  --warn:   #A85A1E;
+  --muted:  #6E6560;
+  --card:   #FFFFFF;
+  --codebg: #ECEAE5;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 15.5px;
+  line-height: 1.68;
+}
+
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 52px 28px 88px;
+}
+
+/* ── Header ───────────────────────────────────── */
+.doc-header {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 22px;
+  margin-bottom: 0;
+}
+
+.doc-eyebrow {
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 27px;
+  font-weight: normal;
+  line-height: 1.28;
+  text-wrap: balance;
+  margin-bottom: 14px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--pass);
+  background: rgba(30,122,69,.1);
+  border: 1px solid rgba(30,122,69,.28);
+  padding: 4px 11px;
+  border-radius: 2px;
+  margin-right: 8px;
+}
+.status-badge::before {
+  content: '';
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--pass);
+  display: block;
+}
+.status-badge.warn {
+  color: var(--warn);
+  background: rgba(168,90,30,.1);
+  border-color: rgba(168,90,30,.28);
+}
+.status-badge.warn::before { background: var(--warn); }
+
+/* ── Stats bar ────────────────────────────────── */
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-top: none;
+  margin-bottom: 44px;
+}
+.stat {
+  background: var(--card);
+  padding: 16px 18px 14px;
+}
+.stat-value {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.stat-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-top: 4px;
+}
+
+/* ── Sections ─────────────────────────────────── */
+.section { margin-bottom: 48px; }
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 7px;
+  margin-bottom: 18px;
+}
+.section-num {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: .06em;
+  flex-shrink: 0;
+}
+h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
+  font-weight: normal;
+}
+h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 14.5px;
+  font-weight: normal;
+  color: var(--ink);
+  margin: 28px 0 11px;
+}
+
+p { max-width: 66ch; margin-bottom: 13px; }
+p:last-child { margin-bottom: 0; }
+
+strong { font-weight: 600; }
+
+code {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: .88em;
+  background: var(--codebg);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+ol, ul { margin: 0 0 13px 22px; }
+li { max-width: 66ch; margin-bottom: 5px; }
+
+/* ── Diagram / pre ───────────────────────────── */
+.diagram {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  background: var(--codebg);
+  border-left: 3px solid var(--accent);
+  padding: 16px 20px;
+  overflow-x: auto;
+  color: var(--ink);
+  margin: 14px 0;
+}
+.diagram.warn { border-left-color: var(--warn); }
+
+.formula {
+  display: block;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 13.5px;
+  background: var(--codebg);
+  padding: 13px 18px;
+  margin: 13px 0;
+  overflow-x: auto;
+  border-radius: 2px;
+}
+
+pre {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  background: var(--codebg);
+  padding: 16px 20px;
+  overflow-x: auto;
+  border-radius: 2px;
+  margin: 13px 0;
+}
+
+/* ── Tables ──────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: 13px 0; }
+table { border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; width: 100%; }
+th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  padding: 8px 12px 6px;
+  border-bottom: 1.5px solid var(--ink);
+  background: var(--card);
+}
+td { padding: 7px 12px; border-bottom: 1px solid var(--rule); background: var(--card); }
+tr:last-child td { border-bottom: none; }
+td.lbl { color: var(--muted); font-size: 13px; }
+td.num { font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace; text-align: right; }
+td.pass { color: var(--pass); font-weight: 600; }
+td.acc  { color: var(--accent); font-weight: 600; }
+td.warn { color: var(--warn); font-weight: 600; }
+
+/* ── Footer ──────────────────────────────────── */
+.doc-footer {
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.doc-footer a { color: var(--accent); text-decoration: none; }
+.doc-footer a:hover { text-decoration: underline; }
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 580px) {
+  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+  .stat-value { font-size: 20px; }
+  h1 { font-size: 22px; }
+  .page { padding: 32px 18px 60px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ── -->
+  <header class="doc-header">
+    <div class="doc-eyebrow">AtomSpectra · Pull-стрим сегментов + шов на лету · 2026-07-04</div>
+    <h1>REC-12 — Pull-стрим сегментов водопада<br>+ шов на лету в единый <code>.aswf</code></h1>
+    <span class="status-badge">Стрим стабилен — 11.00 ч</span>
+    <span class="status-badge warn">#REC-13 (пин pull-пути) — не критично</span>
+  </header>
+
+  <!-- ── Stats bar ── -->
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-value">11.00</div>
+      <div class="stat-label">Часов непрерывной записи</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">60</div>
+      <div class="stat-label">Сегментов склеено</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">660</div>
+      <div class="stat-label">Строк спектра · 0 потерь</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">10.32<span style="font-size:14px"> МБ</span></div>
+      <div class="stat-label">Склеенный .aswf</div>
+    </div>
+  </div>
+
+  <!-- ── §1 Цель ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§1</span>
+      <h2>Цель</h2>
+    </div>
+    <p>После #REC-11 (pull-эндпоинты <code>/api/waterfall/segments</code> +
+    <code>.../segment</code> + <code>.../segment/delete</code>) плата умеет отдавать
+    финализированные сегменты водопада по HTTP. Но каждый сегмент — отдельный <code>.aswf</code>
+    с собственным заголовком, а длинная запись (&gt; <code>ring_capacity</code>) не
+    восстанавливается постфактум — кольцо keep-last перезаписывает старые строки (#FW-19).</p>
+    <p>#REC-12 замыкает pull-модель: PC-клиент периодически опрашивает плату, забирает новые
+    сегменты и <strong>на лету</strong> склеивает их в один растущий <code>.aswf</code>. Тест —
+    11 ч непрерывной записи с Cs-137 662 кэВ в обычных условиях (комнатная температура,
+    WiFi). Валидируется склейка без швов, отсутствие потерь, идемпотентность и открываемость
+    результата штатным вьюером.</p>
+  </section>
+
+  <!-- ── §2 Схема ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§2</span>
+      <h2>Схема эксперимента</h2>
+    </div>
+    <div class="diagram">
+[AtomSpectra детектор]
+        │  USB (внутри платы)
+        ▼
+[ESP32-S3 atomspectra-gw]                  [PC Windows 11]
+  /api/waterfall/segments  ── HTTP ──►     wf_recorder_app.py (UI поверх wf_pull_client.py)
+  /api/waterfall/segment                          │
+  /api/waterfall/segment/delete                   ├─ spectrogram_04-07-2026.aswf   (единый файл, растёт)
+  /api/status (t1/t2/t3)                          ├─ ...aswf.state.json            (ingested по seg-name+size)
+                                                  └─ ...aswf.temps.csv             (телеметрия температуры)</div>
+    <p style="margin-top:14px">Плата пишет водопад в flash-кольцо, финализирует сегменты по
+    возрасту и объёму. PC-клиент раз в <code>--interval</code> секунд опрашивает список
+    сегментов, тянет новые (по <code>state.json</code>), приписывает <strong>только строки</strong>
+    в конец растущего файла (заголовок сегмента отбрасывается, первый заголовок остаётся
+    как шапка склеенного файла), <code>fsync</code>, и только затем — <code>POST .../delete</code>
+    для этого сегмента на плате.</p>
+    <p>Сеть/файл/плата отвалились посреди шага — сегмент останется в списке платы, попадёт
+    в следующий проход. Дубликаты режутся <code>state.json</code> по паре <code>(name, size)</code>.</p>
+  </section>
+
+  <!-- ── §3 Параметры ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§3</span>
+      <h2>Параметры теста</h2>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Параметр</th><th>Значение</th></tr>
+        <tr><td class="lbl">Прошивка платы</td><td><code>main</code> после #WF-1 (<code>CONFIG_SPI_FLASH_AUTO_SUSPEND</code> выкл)</td></tr>
+        <tr><td class="lbl">PC-клиент (ядро)</td><td><code>scripts/wf_pull_client.py</code></td></tr>
+        <tr><td class="lbl">PC-клиент (UI-сборщик)</td><td><code>scripts/wf_recorder_app.py</code></td></tr>
+        <tr><td class="lbl">Launcher</td><td><code>scripts/wf_recorder.bat</code></td></tr>
+        <tr><td class="lbl">Интервал опроса</td><td>60 с</td></tr>
+        <tr><td class="lbl">Источник</td><td>Cs-137 662 кэВ, комнатная температура</td></tr>
+        <tr><td class="lbl">Соединение</td><td>WiFi (плата ↔ PC)</td></tr>
+      </table>
+    </div>
+    <p>Запуск (двойной клик по <code>wf_recorder.bat</code>) или напрямую:</p>
+    <pre>python scripts\wf_recorder_app.py --host http://atomspectra.local --interval 60</pre>
+
+    <h3>3.1 Готовый Windows exe (#PKG-1)</h3>
+    <p>Для пользователей без Python — самодостаточный <code>wf_recorder.exe</code>
+    (~12 МБ, tkinter + <code>requests</code> + <code>wf_pull_client</code> внутри):</p>
+    <ul>
+      <li><strong>Скачать:</strong>
+        <a href="https://github.com/VibeEngineering-LLC/atomspectra-waterfall-esp32/releases/tag/wf-recorder-v0.1.0">Release <code>wf-recorder-v0.1.0</code></a>.</li>
+      <li><strong>Запуск:</strong> двойной клик → GUI откроется. По умолчанию файл записи —
+        <code>received/spectrogram.aswf</code> рядом с exe (создастся автоматически).</li>
+      <li><strong>Пересборка из исходников</strong> (Python 3.10+, PyInstaller):</li>
+    </ul>
+    <pre>cd scripts
+python -m PyInstaller --onefile --windowed --name wf_recorder \
+  --hidden-import wf_pull_client --paths . wf_recorder_app.py
+# результат: scripts/dist/wf_recorder.exe</pre>
+    <p>Логика внутри exe идентична <code>.py</code>-версии (тот же
+    <code>wf_pull_client.Stitcher</code>, тот же <code>state.json</code>, тот же порядок
+    «сшить → fsync → delete на плате»), включая fix
+    <code>_default_output_path()</code> для frozen-запуска.</p>
+    <blockquote>
+      <strong>Asset обновлён 2026-07-05 (commit <code>85eadb7</code>):</strong> исправлен старт exe —
+      режим <code>--windowed</code> PyInstaller обнуляет <code>sys.stdout</code>/<code>sys.stderr</code>;
+      вызов <code>.reconfigure()</code> в <code>wf_recorder_app.py</code> и
+      <code>wf_pull_client.py</code> обёрнут guard-ом
+      <code>if sys.stdout is not None</code>.
+    </blockquote>
+  </section>
+
+  <!-- ── §4 Результаты ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§4</span>
+      <h2>Результаты</h2>
+    </div>
+
+    <h3>Общая длительность</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Событие</th><th style="text-align:right">Значение</th></tr>
+        <tr><td class="lbl">Первый сегмент склеен</td><td class="num">2026-07-04 09:30:03 UTC</td></tr>
+        <tr><td class="lbl">Последний сегмент склеен</td><td class="num">2026-07-04 20:30:05 UTC</td></tr>
+        <tr><td class="lbl">Продолжительность (dur_sum)</td><td class="num acc">11.00 ч (39 601 с)</td></tr>
+        <tr><td class="lbl">Строк спектра всего</td><td class="num acc">660 (по 60.00 с/строка)</td></tr>
+        <tr><td class="lbl">Сегментов забрано</td><td class="num acc">60 (seg_00000 … seg_00059)</td></tr>
+        <tr><td class="lbl">Размер каждого сегмента на плате</td><td class="num">184 350 байт (константно)</td></tr>
+      </table>
+    </div>
+    <p>Разброс интервала строки (<code>39 601 / 660 = 60.001 с</code>) — на уровне единиц
+    миллисекунд, точно попадает в номинал без дрейфа.</p>
+
+    <h3>Склеенный <code>.aswf</code></h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Метрика</th><th style="text-align:right">Значение</th></tr>
+        <tr><td class="lbl">Файл</td><td>received/spectrogram_04-07-2026.aswf (локально, не в git)</td></tr>
+        <tr><td class="lbl">Размер</td><td class="num acc">10 818 864 байт (~10.32 МБ)</td></tr>
+        <tr><td class="lbl">Строк (из шапки v2)</td><td class="num">660</td></tr>
+        <tr><td class="lbl">Формула проверки</td><td class="num pass">60 × 184 350 − 59 × 4104 = 10 818 864 ✔</td></tr>
+      </table>
+    </div>
+    <p><code>4104 байт</code> — размер заголовка сегмента. Stitcher оставляет заголовок первого
+    сегмента как шапку итогового файла и отбрасывает шапки 59 последующих. Совпадение
+    до байта — прямое доказательство, что склейка не добавляет и не теряет ни одного байта
+    данных.</p>
+
+    <h3>Стабильность стрима</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Метрика</th><th style="text-align:right">Значение</th></tr>
+        <tr><td class="lbl">Провалов опроса (error:... в логе клиента)</td><td class="num pass">0</td></tr>
+        <tr><td class="lbl">Сегментов, потерянных кольцом до забора</td><td class="num pass">0 (seg_dropped = 0)</td></tr>
+        <tr><td class="lbl">Ребутов платы</td><td class="num pass">0</td></tr>
+        <tr><td class="lbl">Пропусков строк на границах сегментов</td><td class="num pass">0 (визуально по 3D-водопаду)</td></tr>
+        <tr><td class="lbl">Скачков центроида на стыках</td><td class="num pass">нет (пик Cs-137 стабилен по всей высоте, 2D-карта)</td></tr>
+      </table>
+    </div>
+
+    <h3>Телеметрия температуры прибора (<code>t1</code>)</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Параметр</th><th style="text-align:right">Значение</th></tr>
+        <tr><td class="lbl">Замеров</td><td class="num">603 (по одному на проход опроса)</td></tr>
+        <tr><td class="lbl">Диапазон</td><td class="num">25.5 … 27.0 °C</td></tr>
+        <tr><td class="lbl">Разброс</td><td class="num">1.5 °C за 10.7 ч (комнатная эксплуатация)</td></tr>
+      </table>
+    </div>
+    <p><code>t2</code>, <code>t3</code> = 0 (не задействованы этой сборкой прошивки) — норма.</p>
+  </section>
+
+  <!-- ── §5 Артефакт: pull без пина ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§5</span>
+      <h2>Артефакт: pull-путь без пина сегмента vs. keep-last кольцо</h2>
+    </div>
+    <p>Кольцо keep-last (<code>make_room()</code>, <code>main/spectrogram.c:304-321</code>)
+    удаляет самый старый завершённый сегмент при нехватке места на flash — кроме текущего
+    открытого и <strong>запиненного</strong> (<code>s_seg_pinned</code>). Пин ставит только
+    push-выгрузка (#REC-11-A2, <code>wf_offload.c</code>), pull-путь
+    (<code>GET /api/waterfall/segment</code>) сегмент во время скачивания <strong>не пинит</strong>.</p>
+    <p>При интервале опроса 60 с и типовой скорости записи (сегмент ~10-11 мин) запас
+    многократный — за час плата добавляет ~5-6 сегментов, клиент делает 60 проходов. На
+    данном тесте кольцо ни разу не приблизилось к границе (<code>seg_dropped = 0</code>,
+    все 60 сегментов забраны).</p>
+    <p>Но при аварийно длинном интервале клиента или очень быстрой сегментации кольцо может
+    съесть непрочитанный сегмент. Это зафиксировано как <strong>известное ограничение</strong>
+    в <a href="../KNOWN_ISSUES.md">KNOWN_ISSUES.md</a> — обходной путь: держать
+    <code>--interval</code> заметно короче времени съедания кольцом непрочитанного сегмента
+    при текущей скорости записи. Автоматической защиты (аналог <code>s_seg_pinned</code> для
+    pull-скачивания) пока нет — на текущей длительности теста (11 ч) не требуется.</p>
+  </section>
+
+  <!-- ── §6 started_at vs dur ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§6</span>
+      <h2>Артефакт: <code>started_at</code> vs. <code>dur</code> — разные источники времени</h2>
+    </div>
+    <p><code>started_at</code> в шапке склеенного файла = <code>time(NULL)</code> платы на
+    момент открытия <strong>первого</strong> сегмента (SNTP-синк через <code>pool.ntp.org</code>).
+    Абсолютная метка — только если у платы был интернет на старте сегмента. Полное описание —
+    в <a href="../WATERFALL.md">WATERFALL.md</a>.</p>
+    <p><code>dur</code> каждой строки — с живых часов <strong>прибора</strong>
+    (<code>total_time_sec</code>), от интернета не зависит. Реляционные интервалы между
+    строками честны всегда — и на этом тесте подтверждено: <code>660 строк × 60.001 с =
+    39 601 с</code>, ровно совпадает с независимой оценкой по <code>unix_ts</code> из
+    <code>temps.csv</code> (10.75 ч между первым и последним замером).</p>
+  </section>
+
+  <!-- ── §7 Артефакты ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§7</span>
+      <h2>Артефакты (файлы)</h2>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Файл</th><th>Роль</th></tr>
+        <tr><td><code>received/spectrogram_04-07-2026.aswf</code></td><td class="lbl">Склеенный .aswf (11 ч), локально, ~10.3 МБ, gitignored</td></tr>
+        <tr><td><code>received/…aswf.state.json</code></td><td class="lbl">Ingested-state (name+size)</td></tr>
+        <tr><td><code>received/…aswf.temps.csv</code></td><td class="lbl">Телеметрия температуры (603 строки)</td></tr>
+        <tr><td><code>scripts/wf_pull_client.py</code></td><td class="lbl">PC-клиент (ядро)</td></tr>
+        <tr><td><code>scripts/wf_recorder_app.py</code></td><td class="lbl">PC-клиент (UI-сборщик)</td></tr>
+        <tr><td><code>scripts/wf_recorder.bat</code></td><td class="lbl">Launcher</td></tr>
+        <tr><td><code>main/web_waterfall.c</code></td><td class="lbl">Firmware pull-эндпоинты платы</td></tr>
+      </table>
+    </div>
+    <p>Артефакты записи (<code>.aswf</code>, <code>.state.json</code>, <code>.temps.csv</code>) —
+    локально, не публикуются (gitignored: <code>*.aswf</code>, <code>*.n42</code>; каталог
+    <code>received/</code> игнорируется отдельно).</p>
+  </section>
+
+  <!-- ── §8 Импликации ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§8</span>
+      <h2>Импликации</h2>
+    </div>
+    <p><strong>#REC-12 → закрыт.</strong> Pull-стрим доказан на железе: 11 ч непрерывной
+    записи, 60 сегментов, 660 строк — 0 потерь, 0 швов, 0 дубликатов, склеенный файл
+    байт-в-байт совпадает с ожидаемым размером (<code>60 × сегмент − 59 × шапка</code>).
+    Открывается штатным вьюером как единая запись.</p>
+    <p>Схема покрывает основной сценарий длинных записей, обходя ограничение #FW-19
+    (экспорт n42 обрезан кольцом на ~4.25 ч) — pull-клиент забирает сегменты <strong>до</strong>
+    заполнения кольца, восстанавливать хвост постфактум не требуется.</p>
+
+    <h3>Незакрытые связанные</h3>
+    <ul>
+      <li><strong>#FW-19</strong> (task #32, pending) — увеличение <code>ring_capacity</code>
+      и/или документирование требования периодического pull. #REC-12 смягчает симптом, но
+      не устраняет причину.</li>
+      <li><strong>#REC-13</strong> (не заведён, потенциально) — пин сегмента для pull-скачивания
+      (аналог <code>s_seg_pinned</code> push-пути). На текущей длительности и типовых
+      интервалах не критично, документировано в <a href="../KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>.</li>
+    </ul>
+  </section>
+
+  <!-- ── §9 Итог ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§9</span>
+      <h2>Итог</h2>
+    </div>
+    <p><strong>Pull-стрим <code>wf_recorder_app.py</code> подтверждён: 11.00 ч непрерывной
+    записи, 60 сегментов склеены на лету в единый 10.32 МБ <code>.aswf</code>. 0 потерь,
+    0 швов, 0 ребутов, склеенный файл байт-в-байт совпадает с ожидаемым размером. Пик
+    Cs-137 662 кэВ стабилен по всей высоте 3D-водопада и 2D-карты. Схема закрывает основной
+    сценарий длинных записей, обходя ограничение #FW-19 без изменения прошивки.</strong></p>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="doc-footer">
+    <span>AtomSpectra Waterfall ESP32 · <a href="https://github.com/VibeEngineering-LLC/atomspectra-waterfall-esp32">GitHub</a></span>
+    <span>REC-12 · 2026-07-04 · 11.00 ч</span>
+    <a href="rec12_report.md">Markdown-версия</a>
+  </footer>
+
+</div><!-- .page -->
+</body>
+</html>

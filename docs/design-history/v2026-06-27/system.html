@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtomSpectra · Система</title>
+<style>
+  :root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--bg); }
+  body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; padding-bottom:28px; }
+  a{ color:inherit; text-decoration:none; } button{ font-family:inherit; }
+  .wrap{ max-width:1460px; margin:0 auto; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+  header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+  .brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+  .logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+  .logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+  .logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+  .chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+  nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+  nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+  nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+  .panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; padding:16px; }
+  .mut{ color:#6b756a; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .ttl{ font-size:14px; font-weight:600; color:#e8efe2; margin-bottom:13px; display:flex; align-items:center; gap:8px; }
+  .kv{ display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid #161c15; font-size:12.5px; }
+  .kv span:first-child{ color:#7c887c; } .kv span:last-child{ color:#dfe5dc; text-align:right; }
+  .bar{ height:7px; border-radius:4px; background:#1b211a; overflow:hidden; } .bar > i{ display:block; height:100%; border-radius:4px; }
+  .btn{ width:100%; border-radius:8px; padding:9px 0; font-size:12.5px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); margin-top:13px; }
+  .btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.4); color:var(--accent); font-weight:600; }
+  .btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.4); color:#ff8a82; }
+  @media (max-width:900px){ .grid{ grid-template-columns:1fr } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+    <div class="chips"><span class="chip ok"><span class="dot"></span>Прибор подключён</span><span class="chip">192.168.x.x</span></div>
+  </header>
+  <nav>
+    <a href="index.html">Спектр</a><a href="waterfall.html">Водопад</a><a href="saved.html">Сохранённые</a>
+    <span class="on">Система</span>
+  </nav>
+
+  <div class="wrap">
+    <div class="grid">
+      <section class="panel">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:12px;color:#8a9686">Свободная память (heap)</span><span style="font-size:18px;font-weight:600;color:var(--accent)"><span id="heap">214</span> <span class="mut" style="font-size:11px">КБ</span></span></div>
+        <canvas id="heapc" width="700" height="90" style="width:100%;height:auto;display:block"></canvas>
+      </section>
+      <section class="panel">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:12px;color:#8a9686">Загрузка CPU</span><span style="font-size:18px;font-weight:600;color:var(--accent)"><span id="cpu">52</span> <span class="mut" style="font-size:11px">%</span></span></div>
+        <canvas id="cpuc" width="700" height="90" style="width:100%;height:auto;display:block"></canvas>
+      </section>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="ttl"><span style="color:var(--accent)">▣</span> ESP32-S3</div>
+        <div class="kv"><span>Чип</span><span>ESP32-S3 N16R8</span></div>
+        <div class="kv"><span>Flash / PSRAM</span><span>16 МБ / 8 МБ</span></div>
+        <div class="kv"><span>Прошивка</span><span>atomspectra v1.3.0</span></div>
+        <div class="kv"><span>ESP-IDF</span><span>v5.4</span></div>
+        <div class="kv"><span>Uptime</span><span>6ч 12м 41с</span></div>
+        <div class="kv"><span>Сброс</span><span>power-on</span></div>
+        <div style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b756a;margin-bottom:5px"><span>Flash LittleFS</span><span>4 536 / 13 248 КБ (34.2%)</span></div><div class="bar"><i style="width:34.2%;background:var(--accent)"></i></div></div>
+      </section>
+
+      <section class="panel">
+        <div class="ttl"><span style="color:var(--accent)">≋</span> WiFi</div>
+        <div class="kv"><span>Режим</span><span>STA (клиент)</span></div>
+        <div class="kv"><span>SSID</span><span>home-2.4G</span></div>
+        <div class="kv"><span>IP</span><span>192.168.x.x</span></div>
+        <div class="kv"><span>MAC</span><span>A0:B7:65:2F:11:9C</span></div>
+        <div class="kv"><span>Канал</span><span>6 (2.437 ГГц)</span></div>
+        <div style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b756a;margin-bottom:5px"><span>Уровень сигнала</span><span>−52 dBm · отличный</span></div><div class="bar"><i style="width:96%;background:#5fb0c4"></i></div></div>
+        <button class="btn">Сбросить WiFi (режим настройки)</button>
+      </section>
+
+      <section class="panel">
+        <div class="ttl"><span style="color:var(--accent)">◉</span> Прибор · Atom Spectra</div>
+        <div class="kv"><span>Модель</span><span>KB Radar Atom Spectra</span></div>
+        <div class="kv"><span>Серийный №</span><span>AS-7F31</span></div>
+        <div class="kv"><span>Подключение</span><span>USB CDC · 600 kBd</span></div>
+        <div class="kv"><span>Каналов</span><span>8192</span></div>
+        <div class="kv"><span>Калибровка</span><span>задана (5 коэфф.)</span></div>
+        <div class="kv"><span>Прошивка прибора</span><span>fw 2.41</span></div>
+        <button class="btn red">Перезагрузить прибор</button>
+      </section>
+
+      <section class="panel">
+        <div class="ttl"><span style="color:var(--accent)">⇄</span> TCP-мост (serial-over-WiFi)</div>
+        <div class="kv"><span>Порт</span><span>8234</span></div>
+        <div class="kv"><span>Состояние</span><span>свободен</span></div>
+        <div class="kv"><span>Клиент</span><span>—</span></div>
+        <div class="kv"><span>TCP_NODELAY</span><span>вкл</span></div>
+        <div class="mut" style="font-size:11px;line-height:1.5;margin-top:11px">BecqMoni / AtomSpectra на ПК подключаются к <span style="color:#aeb6a8">192.168.x.x:8234</span> вместо COM-порта.</div>
+        <div style="display:flex;gap:8px;margin-top:13px"><button class="btn red" style="margin-top:0">Reboot ESP</button><button class="btn green" style="margin-top:0" onclick="location.reload()">Обновить</button></div>
+      </section>
+    </div>
+  </div>
+
+<script>
+"use strict";
+(function(){
+  var heap=[],cpu=[],i;
+  for(i=0;i<80;i++){ heap.push(212+Math.round(8*Math.sin(i/9))); cpu.push(50+Math.round(10*Math.sin(i/6))); }
+  function ac(){ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0'; }
+  function spark(id,hist,color,fill){
+    var cv=document.getElementById(id),ctx=cv.getContext('2d'),w=cv.width,h=cv.height,mn=1e9,mx=-1e9,i;
+    for(i=0;i<hist.length;i++){ if(hist[i]<mn)mn=hist[i]; if(hist[i]>mx)mx=hist[i]; } if(mx-mn<1)mx=mn+1;
+    var pad=8; function yO(v){ return pad+(h-2*pad)*(1-(v-mn)/(mx-mn)); }
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle='rgba(255,255,255,.05)'; for(var k=0;k<=2;k++){ var y=pad+(h-2*pad)*k/2; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+    var n=hist.length;
+    ctx.beginPath(); for(i=0;i<n;i++){ var x=i/(n-1)*w,yy=yO(hist[i]); i?ctx.lineTo(x,yy):ctx.moveTo(x,yy); }
+    ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
+    ctx.beginPath(); for(i=0;i<n;i++){ var x2=i/(n-1)*w,y2=yO(hist[i]); i?ctx.lineTo(x2,y2):ctx.moveTo(x2,y2); }
+    ctx.strokeStyle=color; ctx.lineWidth=1.4; ctx.stroke();
+  }
+  function redraw(){ var A=ac(); spark('heapc',heap,A,A+'22'); spark('cpuc',cpu,'#5fb0c4','#5fb0c422'); }
+  function init(){
+    redraw();
+    setInterval(function(){
+      var hv=210+Math.round(10*Math.random()+5*Math.sin(heap.length/8)),cv=46+Math.round(14*Math.random()+6*Math.sin(cpu.length/5));
+      heap.push(hv); heap.shift(); cpu.push(cv); cpu.shift();
+      document.getElementById('heap').textContent=hv; document.getElementById('cpu').textContent=cv; redraw();
+    },1200);
+  }
+  if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded',init);
+  /* ДЕВАЙС: fetch('/api/system') → heap/uptime/rssi/flash; fetch('/api/device') → серийник/калибровка */
+})();
+</script>
+</body>
+</html>

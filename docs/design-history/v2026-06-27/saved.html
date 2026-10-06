@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtomSpectra · Сохранённые</title>
+<style>
+  :root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--bg); }
+  body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; padding-bottom:28px; }
+  a{ color:inherit; text-decoration:none; } button{ font-family:inherit; }
+  .wrap{ max-width:1460px; margin:0 auto; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+  header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+  .brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+  .logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+  .logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+  .logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+  .chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+  nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+  nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+  nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+  .panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; } .pad{ padding:13px 16px; }
+  .mut{ color:#6b756a; }
+  .bar{ height:8px; border-radius:4px; background:#1b211a; overflow:hidden; } .bar > i{ display:block; height:100%; border-radius:4px; }
+  .btn{ border-radius:7px; padding:7px 13px; font-size:12px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); }
+  .btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.4); color:var(--accent); font-weight:600; }
+  .btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.4); color:#ff8a82; }
+  .seg{ display:flex; border:1px solid #2a322a; border-radius:7px; overflow:hidden; }
+  .seg button{ padding:7px 14px; font-size:12px; cursor:pointer; border:none; background:transparent; color:#9aa496; }
+  .seg button.on{ background:var(--accent); color:#0c1206; font-weight:700; }
+  .grid{ display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:14px; }
+  .list{ display:flex; flex-direction:column; gap:8px; max-height:560px; overflow:auto; }
+  .item{ display:flex; gap:11px; align-items:center; background:#0e120c; border:1px solid #222a20; border-radius:9px; padding:10px; cursor:pointer; }
+  .item.on{ background:rgba(52,211,192,.08); border-color:rgba(52,211,192,.5); }
+  .item canvas{ width:84px; height:32px; flex-shrink:0; border-radius:4px; background:#0c0f0b; }
+  @media (max-width:860px){ .grid{ grid-template-columns:1fr } .list{ max-height:none } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+    <div class="chips"><span class="chip ok"><span class="dot"></span>Прибор подключён</span><span class="chip">192.168.x.x</span></div>
+  </header>
+  <nav>
+    <a href="index.html">Спектр</a><a href="waterfall.html">Водопад</a>
+    <span class="on">Сохранённые</span><a href="system.html">Система</a>
+  </nav>
+
+  <div class="wrap">
+    <section class="panel pad">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+        <span style="font-size:15px;font-weight:700;color:#e8efe2">Сохранённые спектры <span class="mut" style="font-weight:400;font-size:12px" id="count">· 6 / 400 на flash</span></span>
+        <div style="display:flex;gap:8px"><button class="btn">Экспорт всех (.zip)</button><button class="btn red" id="clear">Удалить все</button></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:5px;color:#aeb6a8"><span><span style="color:var(--accent);font-weight:600">⛁ Flash LittleFS</span> &nbsp; 4 536 / 13 248 КБ (34.2%)</span><span class="mut">свободно 8 712 КБ · ~545 спектров</span></div>
+      <div class="bar"><i style="width:34.2%;background:var(--accent);box-shadow:0 0 8px rgba(52,211,192,.4)"></i></div>
+    </section>
+
+    <div class="grid">
+      <section class="panel pad" style="display:flex;flex-direction:column;min-width:0">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
+          <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:14px;font-weight:600;color:#e8efe2" id="d-name">—</span><span class="mut" style="font-size:11.5px" id="d-time"></span></div>
+          <div class="seg" id="seg-scale"><button data-v="lin">Lin</button><button data-v="log" class="on">Log</button></div>
+        </div>
+        <canvas id="chart" width="1080" height="380" style="width:100%;height:auto;display:block"></canvas>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #1b211a;font-size:12px">
+          <div><span class="mut">Всего</span> <span id="d-total">—</span> <span class="mut">counts</span></div>
+          <div><span class="mut">Live time</span> <span id="d-live">—</span></div>
+          <div><span class="mut">Главный пик</span> <span id="d-peak" style="color:var(--accent)">—</span></div>
+          <div><span class="mut">Размер</span> <span>16 КБ</span></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn">⬇ Export XML</button><button class="btn">⬇ Export CSV</button>
+          <a class="btn green" href="index.html">↗ Наложить на живой</a>
+          <button class="btn red" id="d-del" style="margin-left:auto">Удалить</button>
+        </div>
+      </section>
+      <section class="panel list" id="list" style="padding:10px"></section>
+    </div>
+  </div>
+
+<script>
+"use strict";
+(function(){
+  var M={l:58,t:14,r:16,b:34}, CH={w:1080,h:380}, W=900;
+  var calK=0.383773900647254, calOff=3.52287433185117;
+  var presets=[
+    {id:1,label:'Cs-137 источник',time:'27.06 14:21',live:'00:18:40',kind:'cs137'},
+    {id:2,label:'Фон лаборатории',time:'27.06 12:05',live:'01:00:00',kind:'background'},
+    {id:3,label:'Гранитная плитка',time:'26.06 22:48',live:'00:45:10',kind:'granite'},
+    {id:4,label:'KCl (калий)',time:'26.06 19:30',live:'00:30:00',kind:'potassium'},
+    {id:5,label:'Ториевый калильн.',time:'25.06 17:12',live:'00:25:00',kind:'thorium'},
+    {id:6,label:'Пустая камера',time:'25.06 09:00',live:'00:15:00',kind:'empty'}
+  ];
+  var st={ scale:'log', selectedId:1 }, items=[];
+
+  function rnd(){ return Math.random()+Math.random()+Math.random()-1.5; }
+  function ac(){ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0'; }
+  function gen(kind){
+    var sets={ cs137:{cont:60,peaks:[[662,520,7],[32,80,4]],peakE:'662 кэВ (Cs-137)'},
+      background:{cont:34,peaks:[[1460,60,11],[609,30,8],[2614,22,15]],peakE:'1460 кэВ (K-40)'},
+      granite:{cont:70,peaks:[[186,60,6],[352,90,6],[609,140,8],[1120,80,10],[1764,90,12],[2204,40,14]],peakE:'609 кэВ (Bi-214)'},
+      potassium:{cont:40,peaks:[[1460,360,12]],peakE:'1460 кэВ (K-40)'},
+      thorium:{cont:55,peaks:[[238,150,6],[338,40,6],[583,160,8],[911,120,9],[2614,260,15]],peakE:'2614 кэВ (Tl-208)'},
+      empty:{cont:14,peaks:[[1460,16,11]],peakE:'фон'} };
+    var c=sets[kind]||sets.background,arr=new Float32Array(W),mx=0,total=0;
+    for(var x=0;x<W;x++){ var ch=x/(W-1)*8191,E=ch*0.3838,lc=1-Math.exp(-E/22),v=c.cont*Math.exp(-E/240)+c.cont*0.12*Math.exp(-E/900)+2;
+      for(var p=0;p<c.peaks.length;p++){ var P=c.peaks[p]; v+=P[1]*Math.exp(-((E-P[0])*(E-P[0]))/(2*P[2]*P[2])); }
+      v*=lc; v*=1+.06*rnd(); if(v<0)v=0; arr[x]=v; total+=v; if(v>mx)mx=v; }
+    return {arr:arr,max:mx,total:Math.round(total*9),peakE:c.peakE};
+  }
+  function plot(){ return {l:M.l,t:M.t,w:CH.w-M.l-M.r,h:CH.h-M.t-M.b}; }
+  function drawDetail(){
+    var item=items.find(function(i){return i.id===st.selectedId;}); if(!item)return;
+    var ctx=document.getElementById('chart').getContext('2d'),p=plot(),mx=0;
+    for(var i=0;i<W;i++) if(item.arr[i]>mx)mx=item.arr[i];
+    var log=st.scale==='log';
+    ctx.clearRect(0,0,CH.w,CH.h); ctx.fillStyle='#0c0f0b'; ctx.fillRect(p.l,p.t,p.w,p.h);
+    function yP(v){ return log?p.t+p.h*(1-Math.log(1+Math.max(0,v))/Math.log(1+mx)):p.t+p.h*(1-v/mx); }
+    ctx.font="10.5px ui-monospace,monospace"; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillStyle='#5a645a';
+    if(log){ for(var e=0;e<=6;e++){ var v=Math.pow(10,e); if(v>mx)break; var y=yP(v); ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(p.l,y); ctx.lineTo(p.l+p.w,y); ctx.stroke(); ctx.fillText(v,p.l-7,y); } }
+    else { for(var k=0;k<=5;k++){ var vv=mx*k/5,yy=yP(vv); ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(p.l,yy); ctx.lineTo(p.l+p.w,yy); ctx.stroke(); ctx.fillText(Math.round(vv),p.l-7,yy); } }
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    for(var j=0;j<=8;j++){ var fr=j/8,x=p.l+fr*p.w,ch=fr*8191; ctx.strokeStyle='rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(x,p.t); ctx.lineTo(x,p.t+p.h); ctx.stroke(); ctx.fillStyle='#6b756a'; ctx.fillText(Math.round(ch),x,p.t+p.h+6); }
+    ctx.fillStyle='#4a534a'; ctx.fillText('Channel',p.l+p.w/2,p.t+p.h+19);
+    var A=ac();
+    ctx.beginPath(); for(var x2=0;x2<W;x2++){ var xx=p.l+x2/(W-1)*p.w,y2=yP(item.arr[x2]); x2?ctx.lineTo(xx,y2):ctx.moveTo(xx,y2); }
+    ctx.lineTo(p.l+p.w,p.t+p.h); ctx.lineTo(p.l,p.t+p.h); ctx.closePath();
+    var g=ctx.createLinearGradient(0,p.t,0,p.t+p.h); g.addColorStop(0,A+'55'); g.addColorStop(1,A+'0d'); ctx.fillStyle=g; ctx.fill();
+    ctx.beginPath(); for(var x3=0;x3<W;x3++){ var xa=p.l+x3/(W-1)*p.w,ya=yP(item.arr[x3]); x3?ctx.lineTo(xa,ya):ctx.moveTo(xa,ya); }
+    ctx.strokeStyle=A; ctx.lineWidth=1.2; ctx.stroke();
+    ctx.strokeStyle='#283024'; ctx.lineWidth=1; ctx.strokeRect(p.l+.5,p.t+.5,p.w,p.h);
+    var fmt=function(n){return Math.round(n).toLocaleString('ru-RU');};
+    document.getElementById('d-name').textContent=item.label; document.getElementById('d-time').textContent=item.time;
+    document.getElementById('d-total').textContent=fmt(item.total); document.getElementById('d-live').textContent=item.live; document.getElementById('d-peak').textContent=item.peakE;
+  }
+  function drawSparks(){
+    var A=ac();
+    document.querySelectorAll('canvas[data-spark]').forEach(function(cv){
+      var id=+cv.getAttribute('data-spark'),item=items.find(function(i){return i.id===id;}); if(!item)return;
+      var ctx=cv.getContext('2d'),w=cv.width,h=cv.height,arr=item.arr,n=arr.length,mx=0,i;
+      for(i=0;i<n;i++) if(arr[i]>mx)mx=arr[i];
+      ctx.clearRect(0,0,w,h);
+      ctx.beginPath(); for(var x=0;x<w;x++){ var v=arr[Math.floor(x/w*(n-1))],y=h*(1-Math.log(1+v)/Math.log(1+mx)); x?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+      ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath(); ctx.fillStyle=A+'33'; ctx.fill();
+      ctx.beginPath(); for(var x2=0;x2<w;x2++){ var v2=arr[Math.floor(x2/w*(n-1))],y2=h*(1-Math.log(1+v2)/Math.log(1+mx)); x2?ctx.lineTo(x2,y2):ctx.moveTo(x2,y2); }
+      ctx.strokeStyle=A; ctx.lineWidth=1; ctx.stroke();
+    });
+  }
+  function renderList(){
+    var box=document.getElementById('list'); box.innerHTML='';
+    var fmt=function(n){return Math.round(n).toLocaleString('ru-RU');};
+    items.forEach(function(it){ var d=document.createElement('div'); d.className='item'+(st.selectedId===it.id?' on':'');
+      d.innerHTML='<canvas data-spark="'+it.id+'" width="120" height="46"></canvas><div style="min-width:0;flex:1"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:12.5px;font-weight:600;color:#e8efe2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+it.label+'</span><span data-del="'+it.id+'" style="color:#5b655a;font-size:15px;padding:0 3px;cursor:pointer">×</span></div><div style="font-size:10.5px;color:#8a9686;margin-top:2px">'+it.time+' · '+fmt(it.total)+' cnt</div><div style="font-size:10.5px;color:#6b756a;margin-top:1px">пик '+it.peakE+'</div></div>';
+      d.onclick=function(ev){ if(ev.target.getAttribute('data-del')){ del(it.id); return; } st.selectedId=it.id; renderList(); drawDetail(); };
+      box.appendChild(d); });
+    document.getElementById('count').textContent='· '+items.length+' / 400 на flash';
+    drawSparks();
+  }
+  function del(id){ items=items.filter(function(x){return x.id!==id;}); if(st.selectedId===id) st.selectedId=items[0]?items[0].id:null; renderList(); drawDetail(); }
+
+  function init(){
+    items=presets.map(function(p){ var b=gen(p.kind); return {id:p.id,label:p.label,time:p.time,live:p.live,arr:b.arr,total:b.total,peakE:b.peakE}; });
+    renderList(); drawDetail();
+    var seg=document.getElementById('seg-scale'); seg.addEventListener('click',function(e){ var b=e.target.closest('button'); if(!b)return; [].forEach.call(seg.children,function(c){c.classList.remove('on');}); b.classList.add('on'); st.scale=b.getAttribute('data-v'); drawDetail(); });
+    document.getElementById('clear').onclick=function(){ items=[]; st.selectedId=null; renderList(); var ctx=document.getElementById('chart').getContext('2d'); ctx.clearRect(0,0,CH.w,CH.h); document.getElementById('d-name').textContent='—'; };
+    document.getElementById('d-del').onclick=function(){ if(st.selectedId)del(st.selectedId); };
+  }
+  if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded',init);
+  /* ДЕВАЙС: fetch('/api/list') → items; fetch('/api/saved/<N>/spectrum.json') → arr; см. README */
+})();
+</script>
+</body>
+</html>

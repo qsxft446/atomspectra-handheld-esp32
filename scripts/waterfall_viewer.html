@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>AtomSpectra Waterfall Viewer (.n42 / .aswf)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font:13px/1.4 system-ui,Segoe UI,sans-serif; background:#111; color:#ddd; }
+  header { padding:8px 12px; background:#1a1a1a; border-bottom:1px solid #333; position:sticky; top:0; z-index:5; }
+  header .row { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  label { display:inline-flex; gap:5px; align-items:center; white-space:nowrap; }
+  input[type=number]{ width:64px; background:#222; color:#ddd; border:1px solid #444; border-radius:4px; padding:2px 4px; }
+  input[type=range]{ width:120px; }
+  button{ background:#2a2a2a; color:#ddd; border:1px solid #555; border-radius:4px; padding:3px 9px; cursor:pointer; }
+  button:hover{ background:#383838; }
+  #drop{ margin:6px 0; padding:6px 10px; border:1px dashed #555; border-radius:6px; color:#999; }
+  #drop.hl{ border-color:#6cf; color:#cef; }
+  #meta{ color:#9ad; font-size:12px; }
+  #wrap{ overflow:auto; max-height:calc(100vh - 150px); background:#000; position:relative; }
+  #cv{ image-rendering:pixelated; display:block; }
+  #tip{ position:fixed; pointer-events:none; background:#000d; border:1px solid #555; border-radius:5px;
+        padding:4px 7px; font-size:12px; display:none; z-index:10; white-space:pre; }
+  #legend{ display:inline-block; height:12px; width:140px; vertical-align:middle;
+           background:linear-gradient(90deg,#440154,#414487,#2a788e,#22a884,#7ad151,#fde725); border:1px solid #444; }
+  .sep{ width:1px; height:20px; background:#444; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <strong>Водопад .n42 / .aswf</strong>
+    <button id="pick">Открыть файл…</button>
+    <input id="file" type="file" accept=".n42,.xml,.aswf,.bin" style="display:none">
+    <span id="meta">файл не загружен</span>
+  </div>
+  <div id="drop">Перетащи сюда файл <code>.n42</code> или <code>.aswf</code> (или нажми «Открыть файл…»)</div>
+  <div class="row" id="collectRow">
+    <strong>Сбор с платы</strong>
+    <label>хост <input id="host" type="text" value="" style="width:210px"></label>
+    <button id="wait" title="авто-опрос платы: подхватывает завершённые сегменты по мере готовности">Ждать сегменты</button>
+    <button id="collect">Собрать сегменты</button>
+    <label title="после успешной сборки послать плате ack-delete → освобождает Flash"><input id="wipe" type="checkbox"> стереть на плате</label>
+    <span class="sep"></span>
+    <button id="recStart" title="POST /api/waterfall/start — плата начинает копить сегменты">▶ Старт записи</button>
+    <button id="recStop" title="POST /api/waterfall/stop — финализирует текущий сегмент">⏸ Стоп</button>
+    <span class="sep"></span>
+    <button id="dl" disabled>Скачать .aswf</button>
+    <span id="cstat" style="color:#9ad"></span>
+  </div>
+  <div class="row">
+    <label>Канал от <input id="chMin" type="number" value="0" min="0"></label>
+    <label>до <input id="chMax" type="number" value="8191" min="1"></label>
+    <button id="full">Весь диапазон</button>
+    <span class="sep"></span>
+    <label>Детализация (колонок) <input id="cols" type="number" value="1024" min="64" max="8192" step="64"></label>
+    <span class="sep"></span>
+    <label>Высота строки <input id="rowH" type="range" min="1" max="12" value="3"></label>
+    <label>Ширина бина <input id="colW" type="range" min="1" max="6" value="1"></label>
+    <span class="sep"></span>
+    <label><input id="log" type="checkbox" checked> log</label>
+    <label title="Компенсация температурного дрейфа усиления: выравнивание строк по опорному центроиду"><input id="stab" type="checkbox" checked> стаб. усиления</label>
+    <label>Контраст <input id="gain" type="range" min="0.2" max="6" step="0.1" value="1.4"></label>
+    <span class="sep"></span>
+    <span id="legend"></span> <span style="color:#888">мало → много</span>
+  </div>
+</header>
+
+<div id="wrap"><canvas id="cv" width="100" height="40"></canvas></div>
+<div id="tip"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const NS = "*";
+let ST = null;   // {channels, rows:[{start,real,counts:Uint32Array}], calib:[a0,a1,a2]|null}
+let GRID = null; // {agg:Float32Array, R, C, maxv, chMin, chMax}
+const off = document.createElement("canvas");
+const offctx = off.getContext("2d");
+const cv = $("cv"), ctx = cv.getContext("2d");
+const VIR = [[68,1,84],[65,68,135],[42,120,142],[34,168,132],[122,209,81],[253,231,37]];
+
+function lerp(a,b,t){ return a+(b-a)*t; }
+function viridis(t){
+  t = Math.max(0,Math.min(1,t));
+  const x = t*(VIR.length-1), i = Math.floor(x), f = x-i;
+  const a = VIR[i], b = VIR[Math.min(i+1,VIR.length-1)];
+  return [lerp(a[0],b[0],f)|0, lerp(a[1],b[1],f)|0, lerp(a[2],b[2],f)|0];
+}
+
+function decodeCD(text, comp, channels){
+  const toks = text.trim().split(/\s+/);
+  const out = new Uint32Array(channels);
+  let i=0,k=0;
+  const counted = comp && comp.toLowerCase().indexOf("countedzero")>=0;
+  if(counted){
+    while(i<toks.length && k<channels){
+      const v = +toks[i++];
+      if(v===0){ k += (+toks[i++]||0); }
+      else { out[k++]=v; }
+    }
+  } else {
+    while(i<toks.length && k<channels){ out[k++]= +toks[i++]; }
+  }
+  return out;
+}
+
+function parseN42(text){
+  const xml = new DOMParser().parseFromString(text, "application/xml");
+  if(xml.getElementsByTagName("parsererror").length) throw new Error("XML не распознан");
+  const meas = xml.getElementsByTagNameNS(NS,"RadMeasurement");
+  if(!meas.length) throw new Error("нет RadMeasurement — это не N42 водопад?");
+  let channels = 0;
+  const rows = [];
+  for(const m of meas){
+    const sp = m.getElementsByTagNameNS(NS,"Spectrum")[0];
+    if(!sp) continue;
+    const cd = sp.getElementsByTagNameNS(NS,"ChannelData")[0];
+    if(!cd) continue;
+    const comp = cd.getAttribute("compressionCode") || "";
+    const tmp = cd.textContent.trim().split(/\s+/);
+    let len = comp.toLowerCase().indexOf("countedzero")>=0 ? 0 : tmp.length;
+    if(len===0){ for(let i=0;i<tmp.length;){ const v=+tmp[i++]; if(v===0) len+=(+tmp[i++]||0); else len++; } }
+    channels = Math.max(channels, len);
+    const st = m.getElementsByTagNameNS(NS,"StartDateTime")[0];
+    const rt = m.getElementsByTagNameNS(NS,"RealTimeDuration")[0];
+    rows.push({ comp, raw: cd.textContent, start: st?st.textContent:"", real: rt?rt.textContent:"" });
+  }
+  if(!channels) throw new Error("ChannelData пуст");
+  for(const r of rows){ r.counts = decodeCD(r.raw, r.comp, channels); r.raw=null; }
+  let calib = null;
+  const ec = xml.getElementsByTagNameNS(NS,"CoefficientValues")[0];
+  if(ec){ const c = ec.textContent.trim().split(/\s+/).map(Number); if(c.some(x=>Math.abs(x)>0)) calib=c; }
+  return { channels, rows, calib };
+}
+
+// === .aswf parser ===
+// Layout: "ASWF"(4) | header_len:u32 LE | JSON header (UTF-8, space-padded) | payload (rows × channels × uint16 LE)
+function parseAswf(buf){
+  const u8=new Uint8Array(buf), dv=new DataView(buf);
+  if(buf.byteLength<12) throw new Error(".aswf слишком короткий: "+buf.byteLength+" байт");
+  if(!(u8[0]===0x41&&u8[1]===0x53&&u8[2]===0x57&&u8[3]===0x46))
+    throw new Error("не .aswf: магия "+[u8[0],u8[1],u8[2],u8[3]].map(x=>x.toString(16)).join(" ")+" ≠ ASWF");
+  const hdrLen=dv.getUint32(4,true);
+  if(hdrLen<2||hdrLen>1024*1024) throw new Error("шапка подозрительной длины: "+hdrLen);
+  const hdrBytes=u8.subarray(8,8+hdrLen);
+  let hdr;
+  try{ hdr=JSON.parse(new TextDecoder("utf-8").decode(hdrBytes).trim()); }
+  catch(e){ throw new Error("шапка не JSON: "+e.message); }
+  const channels=hdr.channels|0;
+  if(channels<1||channels>65536) throw new Error("channels из шапки = "+hdr.channels);
+  const interval=+hdr.interval_sec||0;
+  const startedAt=+hdr.started_at||0;          // epoch секунды
+  const calib=Array.isArray(hdr.calibration)&&hdr.calibration.some(x=>Math.abs(x)>0)?hdr.calibration.map(Number):null;
+  // #VIEW-12: baseline-секция (ASWF v3+) — бинарный блок channels×dtype СРАЗУ после
+  // JSON-шапки и ПЕРЕД строками. Без её вычитания payload сдвинут → каша в водопаде.
+  let baselineBytes=0;
+  if(hdr.baseline && typeof hdr.baseline==="object"){
+    const bl=hdr.baseline, n=(bl.channels|0)||(bl.count|0)||0;
+    const w=(bl.dtype==="uint16")?2:4;   // uint32/float32=4, uint16=2
+    baselineBytes=n*w;
+  }
+  const payloadOff=8+hdrLen+baselineBytes;
+  const payloadBytes=buf.byteLength-payloadOff;
+  const rowBytes=channels*2;
+  // v2: запись строки = counts + хвост (длительность); размер записи — row_stride из шапки.
+  // legacy v1 без поля row_stride → плотные строки rowBytes. Границы sanity как в firmware.
+  const strideHdr=hdr.row_stride|0;
+  const stride=(strideHdr>=rowBytes&&strideHdr<=rowBytes+64)?strideHdr:rowBytes;
+  let nRows=Math.floor(payloadBytes/stride);
+  const declared=hdr.saved_rows|0;
+  if(declared>0&&declared<nRows) nRows=declared;  // шапка авторитетнее, если в файле есть «хвост»
+  if(nRows<1) throw new Error("в файле нет ни одной строки (payload "+payloadBytes+" байт, строка "+stride+")");
+  // #VIEW-12: смещения полей строки — из самоописания row_fields (v3+); v1/v2 fallback.
+  let durOff = stride>=rowBytes+2 ? rowBytes : -1;   // legacy: duration сразу за counts
+  let tempOff = -1;                                   // temperature float32 °C (v5, #FW-41)
+  if(Array.isArray(hdr.row_fields)) for(const f of hdr.row_fields){
+    if(f.name==="duration") durOff=f.offset|0;
+    else if(f.name==="temperature") tempOff=f.offset|0;
+  }
+  const rows=new Array(nRows);
+  for(let i=0;i<nRows;i++){
+    // конвертация Uint16 → Uint32, чтобы остальной код работал без изменений
+    const rowOff=payloadOff+i*stride;
+    const dst=new Uint32Array(channels);
+    if(rowOff%2===0){
+      const src=new Uint16Array(buf, rowOff, channels);
+      for(let k=0;k<channels;k++) dst[k]=src[k];
+    } else {
+      for(let k=0;k<channels;k++) dst[k]=dv.getUint16(rowOff+2*k,true);
+    }
+    const t=startedAt>0?(startedAt+i*interval):0;
+    const startStr=t>0?new Date(t*1000).toISOString():"строка #"+i;
+    // длительность (uint16 сек) и температура детектора (float32 °C, v5 #FW-41) по
+    // смещениям из row_fields. Первые строки сегмента бывают dur 0..4 c (#VIEW-9).
+    const dur=durOff>=0&&durOff+2<=stride?dv.getUint16(rowOff+durOff,true):undefined;
+    let temp=tempOff>=0&&tempOff+4<=stride?dv.getFloat32(rowOff+tempOff,true):undefined;
+    if(temp!==undefined&&!Number.isFinite(temp)) temp=undefined;   // NaN-guard (0x7FC00000 до -inf)
+    rows[i]={ comp:"", start:startStr, real:"PT"+interval+"S", counts:dst, dur, temp };
+  }
+  return { channels, rows, calib, _aswf:hdr };
+}
+
+function energy(ch){
+  if(!ST||!ST.calib) return null;
+  const c = ST.calib;
+  let e=0, p=1;
+  for(let i=0;i<c.length;i++){ e += (c[i]||0)*p; p*=ch; }
+  return e;
+}
+
+// === стабилизация усиления (#VIEW-8) ===
+// Прогрев детектора в первые ~25 мин плавно сдвигает линии по каналам (замерено +2..4 кан.
+// на низких каналах <~600; на @753/@2002 дрейф в шуме → модель НЕ мультипликативная).
+// Оценка per-row сдвига b: два сильнейших низких пика → по блокам из 16 строк чистая позиция
+// каждого (центроид с вычитанием линейного фона по боковым окнам) → b_блока = взвешенное
+// среднее Δpos (веса = чистые счёты пика), без сглаживания (горб уже ~4 блока шириной) →
+// per-row линейная интерполяция → ресемплинг: corrected[k] = raw[k+b].
+// Чистый сдвиг (g=1) намеренно: шумный поблочный gain экстраполируется в ±десятки каналов
+// на высоких каналах и ломал бы прямые линии там, где дрейфа нет.
+function computeStab(){
+  const rows=ST.rows, R=rows.length, ch=ST.channels;
+  const HALF=25;
+  const mean=new Float64Array(ch);
+  for(let i=0;i<R;i++){ const c=rows[i].counts; for(let k=0;k<ch;k++) mean[k]+=c[k]; }
+  // сглаженный спектр для поиска пиков (±3)
+  const msm=new Float64Array(ch);
+  for(let k=0;k<ch;k++){
+    const a=Math.max(0,k-3), b=Math.min(ch,k+4);
+    let s=0; for(let t=a;t<b;t++) s+=mean[t];
+    msm[k]=s/(b-a);
+  }
+  // топ-2 локальных пика, мин. разнос 3×HALF
+  const lo=60, hi=Math.min(4000,ch-60);
+  const idx=[]; for(let k=lo;k<hi;k++) idx.push(k);
+  idx.sort((a,b)=>msm[b]-msm[a]);
+  const peaks=[];
+  for(const k of idx){
+    if(peaks.every(p=>Math.abs(k-p)>3*HALF)) peaks.push(k);
+    if(peaks.length===2) break;
+  }
+  if(!peaks.length){ ST._stab=null; ST._stabN=R; return; }
+  peaks.sort((a,b)=>a-b);
+  function netPos(sp,p){ // [позиция, чистые счёты] с вычитанием линейного фона
+    let bl=0,br=0;
+    const wl0=Math.max(0,p-2*HALF+5), wl1=p-HALF, wr0=p+HALF+1, wr1=Math.min(ch,p+2*HALF-4);
+    for(let k=wl0;k<wl1;k++) bl+=sp[k];
+    for(let k=wr0;k<wr1;k++) br+=sp[k];
+    bl/=Math.max(1,wl1-wl0); br/=Math.max(1,wr1-wr0);
+    let s=0,w=0;
+    for(let k=p-HALF;k<=p+HALF;k++){
+      const f=(k-(p-HALF))/(2*HALF);
+      const v=sp[k]-(bl*(1-f)+br*f);
+      if(v>0){ s+=v*k; w+=v; }
+    }
+    return [w>0?s/w:p, w];
+  }
+  const refs=peaks.map(p=>netPos(mean,p));
+  const B=16, nb=Math.ceil(R/B), centers=new Array(nb), bs=new Array(nb);
+  for(let b=0;b<nb;b++){
+    const b0=b*B, b1=Math.min(R,b0+B);
+    const sp=new Float64Array(ch);
+    for(let i=b0;i<b1;i++){
+      const c=rows[i].counts;
+      for(const p of peaks){
+        const kLo=Math.max(0,p-2*HALF-5), kHi=Math.min(ch,p+2*HALF+5);
+        for(let k=kLo;k<kHi;k++) sp[k]+=c[k];
+      }
+    }
+    centers[b]=(b0+b1-1)/2;
+    let sw=0, sd=0;
+    for(let j=0;j<peaks.length;j++){
+      const [pos]=netPos(sp,peaks[j]);
+      const w=refs[j][1];
+      sd+=(pos-refs[j][0])*w; sw+=w;
+    }
+    bs[b]=sw>0?sd/sw:0;
+  }
+  const out=new Array(R);
+  for(let i=0;i<R;i++){
+    let b;
+    if(i<=centers[0]) b=bs[0];
+    else if(i>=centers[nb-1]) b=bs[nb-1];
+    else {
+      let t=1; while(centers[t]<i) t++;
+      const f=(i-centers[t-1])/(centers[t]-centers[t-1]);
+      b=bs[t-1]*(1-f)+bs[t]*f;
+    }
+    if(Math.abs(b)<0.05){ out[i]=rows[i].counts; continue; }
+    const src=rows[i].counts, dst=new Float32Array(ch);
+    for(let k=0;k<ch;k++){
+      const x=k+b, k0=Math.floor(x), f=x-k0;
+      dst[k]=(k0>=0&&k0+1<ch)?src[k0]*(1-f)+src[k0+1]*f:((k0>=0&&k0<ch)?src[k0]:0);
+    }
+    out[i]=dst;
+  }
+  ST._stab=out; ST._stabN=R;
+}
+
+function buildGrid(){
+  if(!ST) return;
+  let chMin = Math.max(0, +$("chMin").value|0);
+  let chMax = Math.min(ST.channels-1, +$("chMax").value|0);
+  if(chMax<=chMin){ chMax = ST.channels-1; chMin=0; }
+  const R = ST.rows.length;
+  const useStab = $("stab").checked && R>2;
+  if(useStab && (!ST._stab || ST._stabN!==R)) computeStab();
+  const rowsSrc = useStab ? ST._stab : null;
+  let C = Math.min(+$("cols").value|0, chMax-chMin+1);
+  if(C<1) C=1;
+  const span = (chMax-chMin+1)/C;
+  // #VIEW-11 (заменяет dur-нормировку #VIEW-9): ремонт аномальных строк, display-only —
+  // в скачивание (.aswf v2) идут сырые counts+dur. Ролловер сегмента на плате роняет
+  // USB-пакет, часть chunk-ов гистограммы устаревает → counts строки скачут (±10..25%),
+  // причём поле dur этому уже НЕ соответствует (бывает dur=6 при недоборе counts и
+  // dur=5 при переборе) — глобальный масштаб nom/dur не чинит и сам красит строки.
+  // Детект: отклонение суммы строки от локальной медианы (окно ±4); строки с
+  // dur!=interval_sec — с пониженным порогом. Ремонт: линейная интерполяция чистыми
+  // соседями. Статистика: sigma суммы строки ~1.8% → порог 7% ≈ 4 sigma.
+  const nomDur = (ST._aswf && +ST._aswf.interval_sec) || 0;
+  const agg = new Float32Array(R*C);
+  for(let y=0;y<R;y++){
+    const counts = rowsSrc ? rowsSrc[y] : ST.rows[y].counts;
+    for(let x=0;x<C;x++){
+      const a = chMin + Math.floor(x*span), b = chMin + Math.floor((x+1)*span);
+      let s=0; for(let ch=a; ch<b; ch++) s += counts[ch];
+      agg[y*C+x]=s;
+    }
+  }
+  const flagged = new Uint8Array(R);
+  if(R>=8){
+    const tot = new Float64Array(R);
+    for(let y=0;y<R;y++){ let s=0; for(let x=0;x<C;x++) s+=agg[y*C+x]; tot[y]=s; }
+    const W=4;
+    for(let y=0;y<R;y++){
+      const lo=Math.max(0,y-W), hi=Math.min(R-1,y+W);
+      const win=[]; for(let k=lo;k<=hi;k++) if(k!==y) win.push(tot[k]);
+      win.sort((a,b)=>a-b);
+      const med = win[win.length>>1] || 1;
+      const dev = Math.abs(tot[y]/med - 1);
+      const d = ST.rows[y].dur;
+      const durOff = nomDur>0 && d!==undefined && d!==null && d!==nomDur;
+      if(d===0 || dev>0.07 || (durOff && dev>0.035)) flagged[y]=1;
+    }
+    // Реальное событие (начало нового плато) — не аномалия: строка согласна
+    // с двумя следующими или двумя предыдущими → снять флаг (кроме dur=0).
+    const near=(a,b)=>Math.abs(a/b-1)<0.03;
+    for(let y=0;y<R;y++){
+      if(!flagged[y] || ST.rows[y].dur===0) continue;
+      const nextOk = y+2<R && near(tot[y],tot[y+1]) && near(tot[y],tot[y+2]);
+      const prevOk = y-2>=0 && near(tot[y],tot[y-1]) && near(tot[y],tot[y-2]);
+      if(nextOk||prevOk) flagged[y]=0;
+    }
+  } else {
+    for(let y=0;y<R;y++) if(ST.rows[y].dur===0) flagged[y]=1;
+  }
+  for(let y=0;y<R;y++){
+    if(!flagged[y]) continue;
+    let p=y-1; while(p>=0&&flagged[p]) p--;
+    let n=y+1; while(n<R&&flagged[n]) n++;
+    if(p>=0&&n<R){
+      const w=(y-p)/(n-p);
+      for(let x=0;x<C;x++) agg[y*C+x]=agg[p*C+x]*(1-w)+agg[n*C+x]*w;
+    } else if(p>=0){ agg.copyWithin(y*C, p*C, p*C+C); }
+    else if(n<R){ agg.copyWithin(y*C, n*C, n*C+C); }
+  }
+  let maxv = 1;
+  for(let i=0;i<R*C;i++) if(agg[i]>maxv) maxv=agg[i];
+  GRID = { agg, R, C, maxv, chMin, chMax, span };
+}
+
+function render(){
+  if(!GRID) return;
+  const { agg, R, C, maxv } = GRID;
+  const useLog = $("log").checked, gain = +$("gain").value;
+  const denom = useLog ? Math.log1p(maxv) : maxv;
+  off.width = C; off.height = R;
+  const img = offctx.createImageData(C,R);
+  const d = img.data;
+  for(let i=0;i<R*C;i++){
+    const v = agg[i];
+    let t = (useLog ? Math.log1p(v) : v)/denom * gain;
+    const rgb = viridis(t);
+    const o=i*4; d[o]=rgb[0]; d[o+1]=rgb[1]; d[o+2]=rgb[2]; d[o+3]=255;
+  }
+  offctx.putImageData(img,0,0);
+  const colW = +$("colW").value, rowH = +$("rowH").value;
+  cv.width = C*colW; cv.height = R*rowH;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0,0, C,R, 0,0, C*colW, R*rowH);
+}
+
+function refresh(){ buildGrid(); render(); }
+
+function detectKind(buf, name){
+  if(buf.byteLength>=4){
+    const u8=new Uint8Array(buf,0,4);
+    if(u8[0]===0x41&&u8[1]===0x53&&u8[2]===0x57&&u8[3]===0x46) return "aswf";  // "ASWF"
+    if(u8[0]===0x3C) return "n42";                                              // "<"
+  }
+  if(name&&/\.aswf$/i.test(name)) return "aswf";
+  if(name&&/\.(n42|xml)$/i.test(name)) return "n42";
+  return "n42"; // default
+}
+
+function fmtBytes(n){ if(n<1024)return n+" B"; if(n<1048576)return(n/1024).toFixed(1)+" КБ";
+  if(n<1073741824)return(n/1048576).toFixed(1)+" МБ"; return(n/1073741824).toFixed(2)+" ГБ"; }
+
+function loadBuf(buf, name){
+  try{
+    const kind = detectKind(buf, name);
+    let extra = "";
+    if(kind==="aswf"){
+      ST = parseAswf(buf);
+      const h = ST._aswf||{};
+      const t = h.started_at>0 ? new Date(h.started_at*1000).toLocaleString() : "?";
+      extra = `  •  начало: ${t}  •  интервал: ${h.interval_sec||"?"} с`;
+      if(h.version) extra += `  •  ASWF v${h.version}`;
+      if(h.serial) extra += `  •  S/N: ${h.serial}`;
+    } else {
+      ST = parseN42(new TextDecoder("utf-8").decode(buf));
+      const r0 = ST.rows[0];
+      extra = `  •  интервал: ${r0?r0.real:"?"}`;
+    }
+    $("chMax").value = ST.channels-1;
+    $("meta").textContent =
+      `${name||""}  •  [${kind}, ${fmtBytes(buf.byteLength)}]  •  строк: ${ST.rows.length}` +
+      `  •  каналов: ${ST.channels}${extra}` +
+      `  •  калибровка: ${ST.calib?("есть ["+ST.calib.map(x=>(+x).toPrecision(4)).join(", ")+"]"):"нет (ось = каналы)"}`;
+    refresh();
+  }catch(e){ $("meta").textContent = "Ошибка: "+e.message; ST=null; }
+}
+
+function readFile(f){
+  const rd=new FileReader();
+  rd.onload=()=>loadBuf(rd.result, f.name);
+  rd.onerror=()=>{ $("meta").textContent="Ошибка чтения файла: "+rd.error; };
+  rd.readAsArrayBuffer(f);
+}
+
+// ---- file input + drag&drop ----
+$("pick").onclick = ()=>$("file").click();
+$("file").onchange = e=>{ const f=e.target.files[0]; if(f) readFile(f); };
+const drop=$("drop");
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.add("hl");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.remove("hl");}));
+drop.addEventListener("drop",e=>{ const f=e.dataTransfer.files[0]; if(f) readFile(f); });
+
+// ---- controls ----
+["chMin","chMax","cols","stab"].forEach(id=>$(id).addEventListener("change",refresh));
+["rowH","colW"].forEach(id=>$(id).addEventListener("input",render));
+$("log").addEventListener("change",render);
+$("gain").addEventListener("input",render);
+$("full").onclick = ()=>{ if(!ST)return; $("chMin").value=0; $("chMax").value=ST.channels-1; refresh(); };
+
+// ---- tooltip ----
+const tip=$("tip");
+cv.addEventListener("mousemove",e=>{
+  if(!GRID){ tip.style.display="none"; return; }
+  const rect=cv.getBoundingClientRect();
+  const colW=+$("colW").value, rowH=+$("rowH").value;
+  const x=Math.floor((e.clientX-rect.left)/colW), y=Math.floor((e.clientY-rect.top)/rowH);
+  if(x<0||y<0||x>=GRID.C||y>=GRID.R){ tip.style.display="none"; return; }
+  const v=GRID.agg[y*GRID.C+x];
+  const ch0=GRID.chMin+Math.floor(x*GRID.span), ch1=GRID.chMin+Math.floor((x+1)*GRID.span)-1;
+  const row=ST.rows[y];
+  const e0=energy(ch0), e1=energy(ch1);
+  const axis = e0!=null ? `энергия: ${e0.toFixed(1)}–${e1.toFixed(1)} keV` : `каналы: ${ch0}–${ch1}`;
+  let txt = `строка #${y}  ${row.start}\n${axis}\nсчёты в бине: ${v}`;
+  if(row.temp!==undefined) txt += `\nt детектора: ${row.temp.toFixed(1)} °C`;
+  tip.textContent = txt;
+  tip.style.display="block";
+  tip.style.left=(e.clientX+14)+"px"; tip.style.top=(e.clientY+14)+"px";
+});
+cv.addEventListener("mouseleave",()=>tip.style.display="none");
+
+// ---- сбор сегментов водопада прямо с платы ----
+// База запросов: если страница ОТДАНА платой (http/https) — same-origin
+// (пустая база = относительные пути, CORS не нужен). Если открыта как file:// —
+// берём абсолютный хост из поля (но кросс-origin fetch к плате браузер обычно
+// заблокирует по CORS; надёжный путь — открыть http://<плата>/viewer).
+const servedOverHttp = /^https?:$/.test(location.protocol);
+function boardBase(){
+  if(servedOverHttp) return "";                       // same-origin
+  return ($("host").value||"").trim().replace(/\/+$/,"");
+}
+function cstat(msg,err){ const el=$("cstat"); el.textContent=msg; el.style.color=err?"#f88":"#9ad"; }
+
+// COMBINED накапливается инкрементально между проходами (одноразовый сбор И авто-ожидание)
+let COMBINED=null;         // {channels, interval_sec, started_at, serial, calib, rows:[Uint32Array...]}
+const seen=new Set();      // имена уже проглоченных сегментов (dedup между проходами)
+const pendingDelete=[];    // имена, ожидающие ack-delete (если включён wipe)
+let wipedCount=0, csrfTok=null, waitTimer=null;
+
+async function jget(url,binary){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error("HTTP "+r.status+" "+url);
+  return binary ? await r.arrayBuffer() : await r.json();
+}
+function corsHint(){ return servedOverHttp?"":" (file:// → CORS; открой http://<плата>/viewer)"; }
+
+function resetCollection(){
+  COMBINED=null; seen.clear(); pendingDelete.length=0; wipedCount=0; csrfTok=null;
+  $("dl").disabled=true;
+}
+function metaLine(){
+  if(!COMBINED) return "нет данных";
+  const c=COMBINED;
+  return `СБОРКА с платы  •  сегментов: ${seen.size}  •  строк: ${c.rows.length}  •  каналов: ${c.channels}`+
+         `  •  калибровка: ${c.calib?("есть ["+c.calib.map(x=>(+x).toPrecision(4)).join(", ")+"]"):"нет"}`;
+}
+// построить ST из накопленного COMBINED и перерисовать
+function applyCombined(){
+  if(!COMBINED||!COMBINED.rows.length) return;
+  const {channels,interval_sec:interval,started_at:started,serial,calib,rows,durs,temps}=COMBINED;
+  ST={ channels, calib, _aswf:{channels,started_at:started,interval_sec:interval,
+                               saved_rows:rows.length,serial,calibration:calib},
+       rows: rows.map((counts,i)=>{
+         const t=started>0?(started+i*interval):0;
+         return { comp:"", start:t>0?new Date(t*1000).toISOString():"строка #"+i,
+                  real:"PT"+interval+"S", counts, dur:durs?durs[i]:undefined,
+                  temp:temps?temps[i]:undefined };
+       }) };
+  $("chMax").value=channels-1;
+  refresh();
+  $("dl").disabled=false;
+}
+
+// скачать все завершённые сегменты, которых ещё нет в seen → дописать в COMBINED. Вернуть #новых сегментов.
+async function ingestNewFinalized(base){
+  const list = await jget(base+"/api/waterfall/segments");
+  const segs = (Array.isArray(list)?list:[]).filter(s=>s.finalized && !seen.has(s.name))
+                 .sort((a,b)=>a.idx-b.idx);
+  let added=0;
+  for(const s of segs){
+    cstat(`скачиваю ${s.name}…`);
+    const buf = await jget(base+"/api/waterfall/segment?name="+encodeURIComponent(s.name), true);
+    if(buf.byteLength!==s.bytes) throw new Error(`${s.name}: размер ${buf.byteLength}≠${s.bytes} (листинг)`);
+    const p = parseAswf(buf);                 // {channels, rows, calib, _aswf}
+    if(!COMBINED){
+      const h=p._aswf||{};
+      COMBINED={ channels:p.channels, interval_sec:+(h.interval_sec)||0,
+                 started_at:+(h.started_at)||0, serial:h.serial||null,
+                 calib:p.calib||null, rows:[], durs:[], temps:[] };
+    } else if(p.channels!==COMBINED.channels){
+      throw new Error(`${s.name}: channels ${p.channels}≠${COMBINED.channels}`);
+    }
+    if(!COMBINED.calib && p.calib) COMBINED.calib=p.calib;
+    for(const r of p.rows){ COMBINED.rows.push(r.counts); COMBINED.durs.push(r.dur); COMBINED.temps.push(r.temp); }
+    seen.add(s.name);
+    if($("wipe").checked) pendingDelete.push(s.name);
+    added++;
+  }
+  return added;
+}
+
+// послать ack-delete для проглоченных сегментов → плата освобождает Flash
+async function wipeSeen(base){
+  if(!pendingDelete.length) return;
+  if(!csrfTok){ try{ csrfTok=(await jget(base+"/api/csrf-token")).token||""; }catch(e){ return; } }
+  for(let i=pendingDelete.length-1;i>=0;i--){
+    const name=pendingDelete[i];
+    try{
+      const r=await fetch(base+"/api/waterfall/segment/delete?name="+encodeURIComponent(name),
+                          {method:"POST",headers:{"X-CSRF-Token":csrfTok}});
+      if(r.ok){ let ok=true; try{ ok=(await r.json()).ok!==false; }catch(e){} if(ok){ wipedCount++; pendingDelete.splice(i,1); } }
+    }catch(e){}
+  }
+}
+
+// одноразовый сбор: сброс + один проход
+async function collectFromBoard(){
+  const base=boardBase();
+  $("collect").disabled=true;
+  try{
+    resetCollection();
+    cstat("запрашиваю список сегментов…");
+    const added=await ingestNewFinalized(base);
+    if(!added){ cstat("нет завершённых сегментов (Старт→накопление→Стоп)",true); return; }
+    applyCombined();
+    $("meta").textContent=metaLine();
+    if($("wipe").checked){ cstat("сборка ок, стираю на плате…"); await wipeSeen(base); }
+    cstat(`готово: собрано ${COMBINED.rows.length} строк из ${seen.size} сегм.`+
+          ($("wipe").checked?`, стёрто ${wipedCount}`:""));
+  }catch(e){
+    cstat("ошибка: "+e.message+corsHint(),true);
+  }finally{
+    $("collect").disabled=false;
+  }
+}
+
+// авто-ожидание: периодический проход без сброса, дописывает новые сегменты
+async function waitTick(){
+  const base=boardBase();
+  try{
+    const added=await ingestNewFinalized(base);
+    if(added){ applyCombined(); $("meta").textContent=metaLine(); if($("wipe").checked) await wipeSeen(base); }
+    const n=COMBINED?COMBINED.rows.length:0;
+    cstat(`жду сегменты… собрано ${seen.size} сегм. / ${n} строк`+
+          (added?` (+${added} нов.)`:"")+($("wipe").checked?`, стёрто ${wipedCount}`:""));
+  }catch(e){
+    cstat("ожидание: "+e.message+corsHint(),true);
+  }
+}
+function toggleWait(){
+  if(waitTimer){ clearInterval(waitTimer); waitTimer=null; $("wait").textContent="Ждать сегменты";
+                 cstat("ожидание остановлено"); return; }
+  $("wait").textContent="⏹ Стоп ожидания";
+  waitTick();                               // первый проход сразу
+  waitTimer=setInterval(waitTick, 8000);    // далее каждые 8 с
+}
+
+// Старт/Стоп записи прямо со страницы (POST + CSRF)
+async function recCmd(path){
+  const base=boardBase();
+  try{
+    if(!csrfTok) csrfTok=(await jget(base+"/api/csrf-token")).token||"";
+    const r=await fetch(base+"/api/waterfall/"+path,{method:"POST",headers:{"X-CSRF-Token":csrfTok}});
+    cstat(path==="start"?("запись: HTTP "+r.status+" — плата копит сегменты"):("стоп: HTTP "+r.status),!r.ok);
+  }catch(e){ cstat(path+": "+e.message+corsHint(),true); }
+}
+
+function buildAswfBlob(){
+  if(!COMBINED) return null;
+  const {channels,interval_sec,started_at,serial,calib,rows,durs}=COMBINED;
+  // #VIEW-9: качаем в v2 — после counts каждой строки uint16 фактической
+  // длительности (сек), иначе информация о недоэкспонированных строках
+  // ролловера теряется и полосы неустранимы при повторном открытии файла.
+  const rowBytes=channels*2, stride=rowBytes+2;
+  const hdrObj={version:2,channels,interval_sec,started_at,saved_rows:rows.length,
+    row_stride:stride,row_time:{dtype:"uint16",unit:"sec",offset:rowBytes}};
+  if(serial) hdrObj.serial=serial;
+  if(calib)  hdrObj.calibration=calib;
+  let hdrStr=JSON.stringify(hdrObj);
+  if(new TextEncoder().encode(hdrStr).length%2) hdrStr+=" "; // чётный оффсет payload — Uint16Array требует выравнивания
+  const hdrBytes=new TextEncoder().encode(hdrStr);
+  const total=8+hdrBytes.length+rows.length*stride;
+  const out=new Uint8Array(total), dv=new DataView(out.buffer);
+  out[0]=0x41;out[1]=0x53;out[2]=0x57;out[3]=0x46;      // ASWF
+  dv.setUint32(4,hdrBytes.length,true);
+  out.set(hdrBytes,8);
+  let off=8+hdrBytes.length;
+  for(let i=0;i<rows.length;i++){
+    const counts=rows[i];
+    const u16=new Uint16Array(out.buffer,off,channels);
+    for(let k=0;k<channels;k++){ const v=counts[k]; u16[k]=v>65535?65535:v; }
+    const d=durs&&durs[i]!==undefined&&durs[i]!==null?durs[i]:interval_sec;
+    dv.setUint16(off+rowBytes,d,true);
+    off+=stride;
+  }
+  return new Blob([out],{type:"application/octet-stream"});
+}
+
+$("collect").onclick=collectFromBoard;
+$("wait").onclick=toggleWait;
+$("recStart").onclick=()=>recCmd("start");
+$("recStop").onclick=()=>recCmd("stop");
+$("dl").onclick=()=>{
+  const b=buildAswfBlob(); if(!b) return;
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(b);
+  a.download="waterfall_collected.aswf";
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+};
+// префилл хоста + подсказка про CORS для file://
+if(servedOverHttp){ $("host").value=location.origin; $("host").readOnly=true; }
+else{ $("host").value="http://atomspectra.local"; }
+
+// ---- optional ?src= auto-load (when served over http) ----
+const src = new URLSearchParams(location.search).get("src");
+if(src){ fetch(src).then(r=>r.arrayBuffer()).then(b=>loadBuf(b, src)).catch(e=>$("meta").textContent="fetch error: "+e.message); }
+</script>
+</body>
+</html>

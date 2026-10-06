@@ -1,0 +1,348 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="demo-shim.js"></script>
+<title data-i18n="page.title">AtomSpectra · Сохранённые</title>
+<style>
+:root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; background:var(--bg); }
+body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; padding-bottom:28px; }
+a{ color:inherit; text-decoration:none; }
+button,input{ font-family:inherit; }
+.wrap{ max-width:1460px; margin:0 auto; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+.brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+.logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+.logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+.logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+.chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+.chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+.chip.btn{ cursor:pointer; color:var(--accent); border-color:rgba(52,211,192,.4); }
+#langBtn{ padding:3px 8px; font-size:10.5px; line-height:1.2; min-width:28px; text-align:center; }
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+.panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; }
+.pad{ padding:13px 16px; }
+.btn{ border-radius:8px; padding:8px 13px; font-size:12.5px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); }
+.btn.sm{ padding:6px 10px; font-size:11.5px; }
+.btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.5); color:var(--accent); font-weight:600; }
+.btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.45); color:#ff8a82; }
+.btn:hover:not(:disabled){ filter:brightness(1.2); }
+.bar{ height:8px; border-radius:4px; background:#1b211a; overflow:hidden; }
+.bar > i{ display:block; height:100%; border-radius:4px; transition:width .3s,background .3s; }
+.lbl{ font-size:11.5px; color:#6b756a; }
+.mut{ color:#6b756a; }
+.grid{ display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:14px; align-items:start; }
+@media (max-width:980px){ .grid{ grid-template-columns:1fr } }
+.list{ max-height:680px; overflow:auto; }
+.item{ padding:11px 14px; border-bottom:1px solid #1b211a; cursor:pointer; display:flex; flex-direction:column; gap:3px; }
+.item:hover{ background:#161b14; }
+.item.on{ background:var(--accent-dim); border-left:3px solid var(--accent); padding-left:11px; }
+.item .hd{ display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#e8efe2; }
+.item .hd b{ color:var(--accent); font-weight:600; }
+.item .sub{ font-size:11px; color:#6b756a; display:flex; gap:10px; }
+.empty{ color:#5b655a; font-style:italic; padding:24px; text-align:center; font-size:13px; }
+.meta{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-size:12px; }
+.meta .k{ color:#7c887c; } .meta .v{ color:#dfe5dc; text-align:right; }
+.actions{ display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px; border-top:1px solid #1b211a; }
+canvas{ display:block; width:100%; height:auto; background:#0c0f0b; border-radius:6px; border:1px solid var(--bd); }
+.title{ font-size:14px; font-weight:600; color:#e8efe2; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; }
+.title .lbl{ font-weight:400; }
+</style>
+</head>
+<body>
+<header>
+<div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+<div class="chips"><span class="chip ok"><span class="dot"></span><span id="device-chip" data-i18n="device">Прибор</span></span><span class="chip" id="ip-chip">—</span><span class="chip btn" id="langBtn">EN</span></div>
+</header>
+<nav>
+<a href="index.html" data-i18n="nav.spectrum">Спектр</a>
+<a href="waterfall.html" data-i18n="nav.waterfall">Водопад</a>
+<span class="on" data-i18n="nav.saved">Сохранённые</span>
+<a href="system.html" data-i18n="nav.system">Система</a>
+<a href="service.html" data-i18n="nav.service">Сервис</a>
+</nav>
+
+<div class="wrap">
+
+<section class="panel pad">
+<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:#aeb6a8">
+<span><span style="color:var(--accent);font-weight:600">&#9921; Flash LittleFS</span> &nbsp; <span id="flash-text">...</span></span>
+<span class="lbl" id="cnt-text">—</span>
+</div>
+<div class="bar"><i id="flash-inner" style="width:0%;background:var(--accent);box-shadow:0 0 8px rgba(52,211,192,.4)"></i></div>
+</section>
+
+<div class="grid">
+
+<section class="panel">
+<div class="title"><span><span data-i18n="view">Просмотр</span> <span id="dt-idx" style="color:var(--accent)" data-i18n="view.placeholder">— выберите спектр —</span></span><span class="lbl" id="dt-when"></span></div>
+<div style="padding:0 14px 14px"><canvas id="dchart" width="900" height="380"></canvas></div>
+<div class="actions" id="dt-actions" style="display:none">
+<a class="btn sm" id="lnk-xml" data-i18n="exp.xml">Export XML</a>
+<a class="btn sm" id="lnk-csv" data-i18n="exp.csv">Export CSV</a>
+<button class="btn sm green" onclick="overlayOnMain()" data-i18n="btn.overlay">&#10141; Overlay на «Спектр»</button>
+<button class="btn sm red" onclick="deleteCurrent()" data-i18n="btn.delete">Удалить</button>
+</div>
+<div style="padding:14px 16px;border-top:1px solid #1b211a">
+<div class="meta" id="meta-grid">
+<span class="k" data-i18n="meta.counts">Counts</span><span class="v" id="m-counts">—</span>
+<span class="k" data-i18n="meta.time">Время измерения</span><span class="v" id="m-time">—</span>
+<span class="k" data-i18n="meta.cps">CPS (среднее)</span><span class="v" id="m-cps">—</span>
+<span class="k" data-i18n="meta.saved">Сохранено</span><span class="v" id="m-saved">—</span>
+<span class="k" data-i18n="meta.ch">Каналы</span><span class="v" id="m-ch">—</span>
+<span class="k" data-i18n="meta.cal">Калибровка</span><span class="v" id="m-cal">—</span>
+</div>
+</div>
+</section>
+
+<section class="panel">
+<div class="title"><span data-i18n="list.title">Список</span><span class="lbl" id="list-cnt">—</span></div>
+<div class="list" id="list"><div class="empty" data-i18n="list.loading">Загрузка...</div></div>
+</section>
+</div>
+
+</div>
+
+<script>
+"use strict";
+var DICT={
+ ru:{
+  "page.title":"AtomSpectra · Сохранённые",
+  "device":"Прибор",
+  "nav.spectrum":"Спектр","nav.waterfall":"Водопад","nav.saved":"Сохранённые","nav.system":"Система","nav.service":"Сервис",
+  "view":"Просмотр","view.placeholder":"— выберите спектр —",
+  "exp.xml":"Export XML","exp.csv":"Export CSV",
+  "btn.overlay":"➡ Overlay на «Спектр»","btn.delete":"Удалить",
+  "meta.counts":"Counts","meta.time":"Время измерения","meta.cps":"CPS (среднее)",
+  "meta.saved":"Сохранено","meta.ch":"Каналы","meta.cal":"Калибровка",
+  "list.title":"Список","list.loading":"Загрузка...",
+  "list.empty":"Нет сохранённых спектров",
+  "list.err":"Ошибка: ",
+  "cnt.saved":"Сохранено: %1",
+  "cnt.items":"%1 шт.",
+  "no_data":"Нет данных",
+  "ax.ch":"Channel","ax.kev":"keV",
+  "confirm.del":"Удалить спектр #%1?",
+  "err.load":"Ошибка загрузки спектра #%1: %2",
+  "cal.set":"задана (%1 коэфф.)","cal.unset":"не задана",
+  "flash.fmt":"%1 / %2 КБ (%3%) · свободно %4 КБ",
+  "time.h":"ч","time.m":"м","time.s":"с"
+ },
+ en:{
+  "page.title":"AtomSpectra · Saved",
+  "device":"Device",
+  "nav.spectrum":"Spectrum","nav.waterfall":"Waterfall","nav.saved":"Saved","nav.system":"System","nav.service":"Service",
+  "view":"View","view.placeholder":"— select a spectrum —",
+  "exp.xml":"Export XML","exp.csv":"Export CSV",
+  "btn.overlay":"➡ Overlay on Spectrum","btn.delete":"Delete",
+  "meta.counts":"Counts","meta.time":"Acq. time","meta.cps":"CPS (avg)",
+  "meta.saved":"Saved","meta.ch":"Channels","meta.cal":"Calibration",
+  "list.title":"List","list.loading":"Loading...",
+  "list.empty":"No saved spectra",
+  "list.err":"Error: ",
+  "cnt.saved":"Saved: %1",
+  "cnt.items":"%1 pcs",
+  "no_data":"No data",
+  "ax.ch":"Channel","ax.kev":"keV",
+  "confirm.del":"Delete spectrum #%1?",
+  "err.load":"Error loading spectrum #%1: %2",
+  "cal.set":"set (%1 coef.)","cal.unset":"not set",
+  "flash.fmt":"%1 / %2 KB (%3%) · free %4 KB",
+  "time.h":"h","time.m":"m","time.s":"s"
+ }
+};
+var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
+function t(k){var d=DICT[LANG]||DICT.ru;return(d[k]!==undefined)?d[k]:(DICT.ru[k]||k);}
+function tfmt(k){var s=t(k);for(var i=1;i<arguments.length;i++)s=s.replace("%"+i,arguments[i]);return s;}
+function lcl(){return LANG==="ru"?"ru-RU":"en-US";}
+function applyI18n(){
+ document.querySelectorAll("[data-i18n]").forEach(function(el){
+  var k=el.getAttribute("data-i18n"); el.textContent=t(k);
+ });
+ document.documentElement.lang=LANG;
+ var b=document.getElementById("langBtn"); if(b)b.textContent=(LANG==="ru")?"EN":"RU";
+}
+function setLang(l){
+ if(l!=="ru"&&l!=="en")l="ru";
+ LANG=l; try{localStorage.setItem("aswf-lang",l);}catch(e){}
+ applyI18n();
+ // re-render dependent UI
+ try{loadFlashInfo();}catch(e){}
+ try{loadList();}catch(e){}
+ if(currentIdx>=0&&currentData)try{drawChart(currentData);refreshMeta();}catch(e){}
+}
+
+var csrfToken="", spectra=[], currentIdx=-1, currentData=null, calib=null, currentMeta=null;
+
+function fmtTime(s){var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),x=s%60;return(h>0?h+t("time.h")+" ":"")+(m>0?m+t("time.m")+" ":"")+x+t("time.s")}
+function fmtDate(ts){return ts>0?new Date(ts*1000).toLocaleString(lcl()):'—'}
+function fmtNum(n){return Math.round(n).toLocaleString(lcl())}
+function ch2kev(c){if(!calib)return c;var e=0;for(var i=0;i<calib.length;i++)e+=calib[i]*Math.pow(c,i);return e}
+async function loadCsrf(){try{var r=await(await fetch("/api/csrf-token")).json();csrfToken=r.token||""}catch(e){}}
+function post(url,opts){opts=opts||{};opts.method="POST";opts.headers=Object.assign({},opts.headers||{},{"X-CSRF-Token":csrfToken});return fetch(url,opts)}
+
+async function loadFlashInfo(){
+ try{
+  var r=await(await fetch("/api/system")).json();
+  var total=r.flash_total||0,used=r.flash_used||0,free=total-used;
+  var pct=total>0?((used/total)*100).toFixed(1):0;
+  document.getElementById("flash-text").innerHTML=tfmt("flash.fmt",
+   (used/1024).toFixed(0),(total/1024).toFixed(0),pct,(free/1024).toFixed(0));
+  var fi=document.getElementById("flash-inner");
+  fi.style.width=pct+"%";
+  fi.style.background=pct>90?"#ff8a82":pct>70?"#f0c45a":"var(--accent)";
+ }catch(e){}
+}
+
+async function loadCalib(){
+ try{var r=await(await fetch("/api/device")).json();
+ if(r.calibration&&r.calibration.length)calib=r.calibration;
+ if(r.serial)document.getElementById("device-chip").textContent=r.serial;}catch(e){}
+}
+
+async function loadList(){
+ try{
+  var r=await(await fetch("/api/list")).json();
+  spectra=r.spectra||[];
+  spectra.sort(function(a,b){return (b.saved_at||0)-(a.saved_at||0);});
+  document.getElementById("cnt-text").textContent=tfmt("cnt.saved",spectra.length);
+  document.getElementById("list-cnt").textContent=tfmt("cnt.items",spectra.length);
+  var el=document.getElementById("list");
+  if(spectra.length===0){el.innerHTML='<div class="empty">'+t("list.empty")+'</div>';return}
+  var html='';
+  for(var i=0;i<spectra.length;i++){
+   var s=spectra[i];
+   var on=s.index===currentIdx?' on':'';
+   html+='<div class="item'+on+'" data-idx="'+s.index+'" onclick="selectIdx('+s.index+')">'+
+    '<div class="hd"><b>#'+s.index+'</b><span class="lbl">'+fmtDate(s.saved_at)+'</span></div>'+
+    '<div class="sub"><span>'+fmtNum(s.counts)+' counts</span><span>'+fmtTime(s.time)+'</span></div>'+
+    '</div>';
+  }
+  el.innerHTML=html;
+ }catch(e){document.getElementById("list").innerHTML='<div class="empty">'+t("list.err")+e+'</div>'}
+}
+
+function refreshMeta(){
+ if(!currentMeta&&!currentData)return;
+ var meta=currentMeta, d=currentData;
+ var total=meta?meta.counts:0;
+ if(!total&&d&&d.bins){total=0;for(var k=0;k<d.bins.length;k++)total+=d.bins[k];}
+ var ti=meta?meta.time:(d&&d.time||0);
+ document.getElementById("m-counts").textContent=fmtNum(total);
+ document.getElementById("m-time").textContent=fmtTime(ti);
+ document.getElementById("m-cps").textContent=ti>0?(total/ti).toFixed(2):"—";
+ document.getElementById("m-saved").textContent=meta?fmtDate(meta.saved_at):"—";
+ document.getElementById("m-ch").textContent=d&&d.bins?d.bins.length:"—";
+ var cal=d&&d.calib&&d.calib.length?d.calib:calib;
+ document.getElementById("m-cal").textContent=cal?tfmt("cal.set",cal.length):t("cal.unset");
+ document.getElementById("dt-when").textContent=meta?fmtDate(meta.saved_at):"";
+}
+
+async function selectIdx(idx){
+ currentIdx=idx;
+ var items=document.querySelectorAll(".item");
+ for(var i=0;i<items.length;i++){items[i].classList.toggle("on",parseInt(items[i].dataset.idx)===idx);}
+ document.getElementById("dt-idx").textContent="#"+idx;
+ currentMeta=spectra.find(function(s){return s.index===idx;})||null;
+ try{
+  var d=await(await fetch("/api/saved/"+idx+"/spectrum.json")).json();
+  currentData=d;
+  drawChart(d);
+  document.getElementById("dt-actions").style.display="";
+  document.getElementById("lnk-xml").href="/api/saved/"+idx+"/export.xml";
+  document.getElementById("lnk-csv").href="/api/saved/"+idx+"/export.csv";
+  refreshMeta();
+ }catch(e){
+  document.getElementById("dt-actions").style.display="none";
+  alert(tfmt("err.load",idx,e));
+ }
+}
+
+function drawChart(d){
+ var C=document.getElementById("dchart");
+ var X=C.getContext("2d");
+ var W=900,H=380,PL=60,PT=12,PR=W-12,PB=H-36,PW=PR-PL,PH=PB-PT;
+ X.fillStyle="#0c0f0b";X.fillRect(0,0,W,H);
+ if(!d.bins||d.bins.length===0){
+  X.fillStyle="#5b655a";X.font="14px ui-monospace,monospace";X.textAlign="center";
+  X.fillText(t("no_data"),W/2,H/2);return;
+ }
+ var bins=d.bins,N=bins.length;
+ var mx=0; for(var i=0;i<N;i++)if(bins[i]>mx)mx=bins[i];
+ if(mx<=0)mx=1;
+ var cal=d.calib&&d.calib.length?d.calib:calib;
+ var hasKev=!!cal;
+ var maxExp=Math.ceil(Math.log10(mx));if(maxExp<1)maxExp=1;
+ var minExp=Math.max(maxExp-6,0);
+ function yMap(v){if(v<=0)return PB;var lv=Math.log10(v);if(lv<minExp)return PB;return PB-((lv-minExp)/(maxExp-minExp))*PH;}
+ X.strokeStyle="rgba(255,255,255,.05)";X.lineWidth=1;
+ X.fillStyle="#5a645a";X.font="10px ui-monospace,monospace";X.textAlign="right";
+ for(var p=minExp;p<=maxExp;p++){
+  var v=Math.pow(10,p),y=yMap(v);
+  X.beginPath();X.moveTo(PL,y);X.lineTo(PR,y);X.stroke();
+  var lbl=v>=1e6?(v/1e6).toFixed(0)+"M":v>=1e3?(v/1e3).toFixed(0)+"k":String(v);
+  X.fillText(lbl,PL-5,y+3);
+ }
+ var accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';
+ X.save();X.beginPath();X.rect(PL,PT,PW,PH);X.clip();
+ var bw=PW/N;
+ X.fillStyle=accent+"44";
+ for(var i=0;i<N;i++){var y=yMap(bins[i]);if(PB-y>0.3)X.fillRect(PL+i*bw,y,Math.max(bw-.3,.3),PB-y);}
+ X.strokeStyle=accent;X.lineWidth=1.2;X.beginPath();
+ for(var i=0;i<N;i++){var px=PL+i*bw+bw/2,py=yMap(bins[i]);i===0?X.moveTo(px,py):X.lineTo(px,py);}
+ X.stroke();
+ X.restore();
+ X.strokeStyle="#283024";X.lineWidth=1;X.strokeRect(PL+.5,PT+.5,PW,PH);
+ var nTicks=8;
+ X.fillStyle="#6b756a";X.font="10px ui-monospace,monospace";X.textAlign="center";
+ for(var i=0;i<=nTicks;i++){
+  var px=PL+i/nTicks*PW;
+  var ch=Math.round(i/nTicks*N);
+  var lbl=hasKev?(function(){var e=0;for(var j=0;j<cal.length;j++)e+=cal[j]*Math.pow(ch,j);return e.toFixed(0);})():String(ch);
+  X.strokeStyle="#283024";X.beginPath();X.moveTo(px,PB);X.lineTo(px,PB+4);X.stroke();
+  X.fillText(lbl,px,PB+15);
+ }
+ X.fillStyle="#5a645a";X.fillText(hasKev?t("ax.kev"):t("ax.ch"),PL+PW/2,PB+30);
+}
+
+async function deleteCurrent(){
+ if(currentIdx<0)return;
+ if(!confirm(tfmt("confirm.del",currentIdx)))return;
+ await post("/api/saved/"+currentIdx+"/delete");
+ currentIdx=-1; currentData=null; currentMeta=null;
+ document.getElementById("dt-idx").textContent=t("view.placeholder");
+ document.getElementById("dt-when").textContent="";
+ document.getElementById("dt-actions").style.display="none";
+ var C=document.getElementById("dchart").getContext("2d");
+ C.fillStyle="#0c0f0b";C.fillRect(0,0,900,380);
+ ["m-counts","m-time","m-cps","m-saved","m-ch","m-cal"].forEach(function(id){document.getElementById(id).textContent="—";});
+ await loadList();
+ await loadFlashInfo();
+}
+
+function overlayOnMain(){
+ if(currentIdx<0)return;
+ try{localStorage.setItem("aswf-overlay",String(currentIdx));}catch(e){}
+ location.href="/?overlay="+currentIdx;
+}
+
+(async function(){
+ applyI18n();
+ document.getElementById("langBtn").onclick=function(){setLang(LANG==="ru"?"en":"ru");};
+ document.getElementById("ip-chip").textContent=location.hostname;
+ await loadCsrf();
+ await loadCalib();
+ await loadFlashInfo();
+ await loadList();
+ setInterval(loadFlashInfo,10000);
+})();
+</script>
+</body>
+</html>

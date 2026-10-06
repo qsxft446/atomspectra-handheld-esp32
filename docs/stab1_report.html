@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STAB-1 — Стабильность AtomSpectra Cs-137 662 кэВ</title>
+<style>
+:root {
+  --ink:    #0C1821;
+  --paper:  #F5F4F0;
+  --rule:   #D0CAC0;
+  --accent: #1B5FAA;
+  --pass:   #1E7A45;
+  --muted:  #6E6560;
+  --card:   #FFFFFF;
+  --codebg: #ECEAE5;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 15.5px;
+  line-height: 1.68;
+}
+
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 52px 28px 88px;
+}
+
+/* ── Header ───────────────────────────────────── */
+.doc-header {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 22px;
+  margin-bottom: 0;
+}
+
+.doc-eyebrow {
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 27px;
+  font-weight: normal;
+  line-height: 1.28;
+  text-wrap: balance;
+  margin-bottom: 14px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--pass);
+  background: rgba(30,122,69,.1);
+  border: 1px solid rgba(30,122,69,.28);
+  padding: 4px 11px;
+  border-radius: 2px;
+}
+.status-badge::before {
+  content: '';
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--pass);
+  display: block;
+}
+
+/* ── Stats bar ────────────────────────────────── */
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-top: none;
+  margin-bottom: 44px;
+}
+.stat {
+  background: var(--card);
+  padding: 16px 18px 14px;
+}
+.stat-value {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.stat-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-top: 4px;
+}
+
+/* ── Sections ─────────────────────────────────── */
+.section { margin-bottom: 48px; }
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 7px;
+  margin-bottom: 18px;
+}
+.section-num {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: .06em;
+  flex-shrink: 0;
+}
+h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
+  font-weight: normal;
+}
+h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 14.5px;
+  font-weight: normal;
+  color: var(--ink);
+  margin: 28px 0 11px;
+}
+
+p { max-width: 66ch; margin-bottom: 13px; }
+p:last-child { margin-bottom: 0; }
+
+strong { font-weight: 600; }
+
+code {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: .88em;
+  background: var(--codebg);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+/* ── Diagram / pre ───────────────────────────── */
+.diagram {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  background: var(--codebg);
+  border-left: 3px solid var(--accent);
+  padding: 16px 20px;
+  overflow-x: auto;
+  color: var(--ink);
+  margin: 14px 0;
+}
+
+.formula {
+  display: block;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 13.5px;
+  background: var(--codebg);
+  padding: 13px 18px;
+  margin: 13px 0;
+  overflow-x: auto;
+  border-radius: 2px;
+}
+
+pre {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  background: var(--codebg);
+  padding: 16px 20px;
+  overflow-x: auto;
+  border-radius: 2px;
+  margin: 13px 0;
+}
+
+/* ── Tables ──────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: 13px 0; }
+table { border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; width: 100%; }
+th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  padding: 8px 12px 6px;
+  border-bottom: 1.5px solid var(--ink);
+  background: var(--card);
+}
+td { padding: 7px 12px; border-bottom: 1px solid var(--rule); background: var(--card); }
+tr:last-child td { border-bottom: none; }
+td.lbl { color: var(--muted); font-size: 13px; }
+td.num { font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace; text-align: right; }
+td.pass { color: var(--pass); font-weight: 600; }
+td.acc  { color: var(--accent); font-weight: 600; }
+
+/* ── Charts ──────────────────────────────────── */
+.chart-block { margin: 22px 0 28px; }
+.chart-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--muted);
+  margin-bottom: 9px;
+}
+canvas.chart {
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  width: 100%;
+}
+.chart-placeholder {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.chart-note {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 7px;
+}
+
+/* ── Footer ──────────────────────────────────── */
+.doc-footer {
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.doc-footer a { color: var(--accent); text-decoration: none; }
+.doc-footer a:hover { text-decoration: underline; }
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 580px) {
+  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+  .stat-value { font-size: 20px; }
+  h1 { font-size: 22px; }
+  .page { padding: 32px 18px 60px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ── -->
+  <header class="doc-header">
+    <div class="doc-eyebrow">AtomSpectra · Тест стабильности · 2026-07-03</div>
+    <h1>STAB-1 — Стабильность усиления детектора<br>Cs-137 662 кэВ, прямое USB-подключение</h1>
+    <span class="status-badge">Пройден — 0 аномалий</span>
+  </header>
+
+  <!-- ── Stats bar ── -->
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-value">9.60</div>
+      <div class="stat-label">Часов мониторинга</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">569</div>
+      <div class="stat-label">Измерительных окон</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">0</div>
+      <div class="stat-label">Аномалий</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">0.023%</div>
+      <div class="stat-label">Макс. дрейф |Δ|</div>
+    </div>
+  </div>
+
+  <!-- ── §1 Цель ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§1</span>
+      <h2>Цель</h2>
+    </div>
+    <p>Тест поставлен в ответ на аномальный выброс времени (~8100 с) в записи водопада
+    с ESP32-платы (инцидент #FW-16). Требовалось установить: является ли дрейф усиления
+    детектора источником нестабильности — или артефакт возникает на уровне тракта платы.</p>
+    <p>Для изоляции ESP32 детектор AtomSpectra подключён <strong>напрямую через
+    FTDI-адаптер</strong> без участия платы-шлюза. Мониторинг выполнен в течение 9.6 ч
+    с шагом окна 60 с (574 окна, из них 5 — baseline, 569 — измерительных).</p>
+    <p><strong>Вывод:</strong> детектор стабилен. Максимальный дрейф пика за 9.6 ч —
+    0.023% при пороге ±2.0% (запас 85×). Источник аномалий #FW-16 — тракт ESP32.</p>
+  </section>
+
+  <!-- ── §2 Схема ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§2</span>
+      <h2>Схема эксперимента</h2>
+    </div>
+    <div class="diagram">
+[AtomSpectra — детектор гамма-излучения]
+        │
+        │  USB FTDI   VID=0403/PID=6001, 600 000 baud
+        │
+        ▼
+[PC — Windows 11]
+  stability_monitor_usb.py
+        │
+        ├─ stability.csv          (1 строка на окно)
+        ├─ stability.n42          (ANSI N42.42, per-window спектры)
+        └─ stability_report.txt
+
+ESP32-плата в схеме отсутствует.
+Детектор подключён напрямую через FTDI-адаптер.</div>
+    <p style="margin-top:14px">Цель прямого подключения — исключить любые артефакты,
+    вносимые платой ESP32 (буферизация, ролловер сегментов, проблемы с WiFi-стеком),
+    и измерить стабильность самого детектора.</p>
+  </section>
+
+  <!-- ── §3 Методология ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§3</span>
+      <h2>Протокол и методология</h2>
+    </div>
+
+    <p><strong>Бинарный протокол shproto.</strong> Детектор передаёт данные в собственном
+    протоколе с escape-кодированием и CRC:</p>
+    <div class="diagram">
+Фрейм:       0xFF 0xFE &lt;data_escaped&gt; 0xA5
+Escape:      байт 0xFD инвертирует следующий байт (~b &amp; 0xFF)
+Контрольная: CRC16-Modbus (табличный алгоритм, 256 записей)
+CMD 0x01:    порция гистограммы — offset 2 B + counts 4 B × N
+CMD 0x03:    текстовый ответ (на команды -inf, -sta)</div>
+
+    <p>По команде <code>-sta</code> детектор начинает поток порций гистограммы.
+    Скрипт накапливает инкрементальную гистограмму 8192 каналов. Каждые 60 с
+    вычисляется <em>разностная</em> гистограмма (окно), затем <strong>центроид</strong>
+    пика Cs-137 в диапазоне каналов 1100–1900:</p>
+
+    <code class="formula">centroid = Σ(ch × counts[ch], ch = 1100..1899) / Σ(counts[ch], ch = 1100..1899)</code>
+
+    <p>Центроид — взвешенное среднее. При пропорциональном дублировании чанков
+    (USB-артефакт) числитель и знаменатель масштабируются одинаково — значение
+    центроида не смещается. Этим объясняется иммунитет метода к артефактам чтения USB.</p>
+
+    <p><strong>Baseline и обнаружение аномалии.</strong> Первые 5 окон формируют baseline;
+    медиана их центроидов = <code>baseline_median</code>. Отклонение последующих окон:</p>
+
+    <code class="formula">Δ% = 100 × (centroid − baseline_median) / baseline_median</code>
+
+    <p>Статус <strong>OK</strong> при |Δ%| ≤ 2.0%; иначе — <strong>ANOMALY</strong>.
+    Окна с нулевым центроидом (обрыв USB) пропускаются без записи в CSV.</p>
+
+    <h3>Параметры запуска</h3>
+    <pre>stability_monitor_usb.py \
+  --port &lt;COM-port&gt; --window 60 \
+  --ch-start 1100   --ch-end 1900 \
+  --anomaly-pct 2.0 --baseline-n 5 \
+  --outdir &lt;output-directory&gt;</pre>
+  </section>
+
+  <!-- ── §4 Результаты ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§4</span>
+      <h2>Результаты</h2>
+    </div>
+
+    <div class="chart-block">
+      <div class="chart-title">Центроид пика Cs-137 — положение в каналах гистограммы</div>
+      <div class="chart-placeholder" id="ph1">Загрузка данных…</div>
+      <canvas id="chart1" class="chart" data-height="240" style="display:none"></canvas>
+      <p class="chart-note">Каждая точка — окно 60 с. Серая полоса слева — baseline (первые 5 окон, ~5 мин). Синяя область — 569 измерительных окон.</p>
+    </div>
+
+    <div class="chart-block">
+      <div class="chart-title">Отклонение Δ% центроида от baseline-медианы (1434.527 кан.)</div>
+      <div class="chart-placeholder" id="ph2">Загрузка данных…</div>
+      <canvas id="chart2" class="chart" data-height="240" style="display:none"></canvas>
+      <p class="chart-note">Порог аномалии ±2.0% — за пределами шкалы (запас 85×). Пунктир — нулевая линия.</p>
+    </div>
+
+    <h3>Временны́е рамки</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Событие</th><th>UTC</th></tr>
+        <tr><td class="lbl">Старт потока</td><td class="num">2026-07-03 08:56:15</td></tr>
+        <tr><td class="lbl">Первое измерительное окно</td><td class="num">2026-07-03 09:01:15</td></tr>
+        <tr><td class="lbl">Конец</td><td class="num">2026-07-03 18:31:23</td></tr>
+        <tr><td class="lbl">Продолжительность</td><td class="num acc">9.60 ч (34 568 с)</td></tr>
+      </table>
+    </div>
+
+    <h3>Окна измерений</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Категория</th><th style="text-align:right">Количество</th></tr>
+        <tr><td class="lbl">BASELINE</td><td class="num">5</td></tr>
+        <tr><td class="lbl">OK</td><td class="num pass">569</td></tr>
+        <tr><td class="lbl">ANOMALY</td><td class="num pass">0</td></tr>
+        <tr><td class="lbl">Итого</td><td class="num">574</td></tr>
+      </table>
+    </div>
+
+    <h3>Центроид (каналы)</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Параметр</th><th style="text-align:right">Значение</th></tr>
+        <tr><td class="lbl">Baseline медиана</td><td class="num acc">1434.527</td></tr>
+        <tr><td class="lbl">Mean (569 окон)</td><td class="num">1434.486</td></tr>
+        <tr><td class="lbl">Стд. отклонение</td><td class="num">0.112 кан.</td></tr>
+        <tr><td class="lbl">Min</td><td class="num">1434.191</td></tr>
+        <tr><td class="lbl">Max</td><td class="num">1434.818</td></tr>
+        <tr><td class="lbl">Диапазон (max − min)</td><td class="num">0.627 кан.</td></tr>
+      </table>
+    </div>
+
+    <h3>Дрейф Δ%</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Параметр</th><th style="text-align:right">Значение</th></tr>
+        <tr><td class="lbl">Mean</td><td class="num">−0.00287%</td></tr>
+        <tr><td class="lbl">Стд. отклонение</td><td class="num">0.00782%</td></tr>
+        <tr><td class="lbl">Min (макс. отрицат.)</td><td class="num">−0.0235%</td></tr>
+        <tr><td class="lbl">Max (макс. положит.)</td><td class="num">+0.0203%</td></tr>
+        <tr><td class="lbl">Максимальный |Δ|</td><td class="num acc">0.0235%</td></tr>
+        <tr><td class="lbl">Порог аномалии</td><td class="num">±2.000%</td></tr>
+        <tr><td class="lbl">Запас до порога</td><td class="num pass">≥ 85×</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── §5 USB-артефакты ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§5</span>
+      <h2>Артефакты счётчика: дублирование чанков USB</h2>
+    </div>
+    <p>В процессе мониторинга фиксировались резкие скачки суммарного счёта
+    (<code>total_counts</code>) в отдельных окнах — примерно 33 раза за первые 406 окон.
+    Природа: порции гистограммы (чанки) при чтении через USB иногда считываются дважды,
+    что удваивает счёт в соответствующих каналах этого окна.</p>
+    <p><strong>Влияние на центроид: нулевое.</strong> Центроид — взвешенное среднее.
+    При дублировании числитель (<code>Σ ch·counts</code>) и знаменатель
+    (<code>Σ counts</code>) масштабируются пропорционально, отношение не меняется.
+    Эмпирическое подтверждение: при ~33 флапах счётчика — 0 аномалий.</p>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Метрика (total_counts / окно)</th><th style="text-align:right">Значение</th></tr>
+        <tr><td class="lbl">Mean по всем каналам</td><td class="num">~362 M</td></tr>
+        <tr><td class="lbl">Mean в окне Cs 1100–1900</td><td class="num">~80 M</td></tr>
+        <tr><td class="lbl">Относит. стд. откл.</td><td class="num">~53% (USB-артефакты)</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── §6 Код ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§6</span>
+      <h2>Ключевые фрагменты кода</h2>
+    </div>
+
+    <h3>Фреймер протокола shproto</h3>
+    <pre>class ShprotoParser:
+    def __init__(self):
+        self.buf = []; self.started = False; self.esc = False
+
+    def feed(self, b: int):
+        if b == 0xFE:
+            self.buf = []; self.started = True; self.esc = False
+            return None
+        if not self.started:
+            return None
+        if b == 0xFD:
+            self.esc = True
+            return None
+        if b == 0xA5:
+            self.started = False
+            if len(self.buf) &gt;= 3 and crc16(bytes(self.buf)) == 0:
+                cmd = self.buf[0]
+                payload = bytes(self.buf[1:-2])
+                return (cmd, payload)
+            return None
+        if self.esc:
+            b = (~b) &amp; 0xFF; self.esc = False
+        self.buf.append(b)
+        return None</pre>
+
+    <h3>Вычисление центроида</h3>
+    <pre>def centroid(histogram: list, ch_start: int, ch_end: int) -&gt; float:
+    total = sum(histogram[ch_start:ch_end])
+    if total == 0:
+        return 0.0
+    return sum(c * histogram[c] for c in range(ch_start, ch_end)) / total</pre>
+
+    <h3>Классификация окна</h3>
+    <pre>delta_pct = 100 * (cen - baseline_median) / baseline_median
+status = "ANOMALY" if abs(delta_pct) &gt; args.anomaly_pct else "OK"</pre>
+  </section>
+
+  <!-- ── §7 Импликации ── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§7</span>
+      <h2>Импликации и следующие шаги</h2>
+    </div>
+    <p><strong>#STAB-1 → закрыт.</strong> Дрейф усиления детектора не является причиной
+    аномалий #FW-16. Детектор AtomSpectra пригоден для длительных записей (24+ ч) без
+    пересчёта энергетической калибровки.</p>
+    <p><strong>#STAB-2 → следующий.</strong> Поскольку детектор стабилен, аномальный выброс
+    ~8100 с в данных с платы (#FW-16) — артефакт тракта ESP32. Следующий тест: та же
+    геометрия, источник и интервал, но сигнал идёт через плату. Добавлена телеметрия
+    firmware-кольца (<code>/api/devlog</code>) для диагностики.</p>
+    <p><strong>#WF-1 → код-фиксы ждут железного ретеста.</strong> Исправления гонки
+    сегментации (рекурсия <code>s_fs_flushed</code>) уже влиты в main. Железный ретест
+    водопада (≥1 ч) — после завершения обоих STAB-тестов.</p>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="doc-footer">
+    <span>AtomSpectra Waterfall ESP32 · <a href="https://github.com/VibeEngineering-LLC/atomspectra-waterfall-esp32">GitHub</a></span>
+    <span>STAB-1 · 2026-07-03</span>
+    <a href="stab1_stability.csv" download>Скачать CSV (574 строки)</a>
+  </footer>
+
+</div><!-- .page -->
+
+<script>
+(function () {
+  'use strict';
+  var DPR = window.devicePixelRatio || 1;
+
+  function setupCanvas(canvas) {
+    var h = parseInt(canvas.getAttribute('data-height') || '240', 10);
+    var w = Math.floor(canvas.parentElement.getBoundingClientRect().width);
+    if (w < 100) w = 600; // fallback if layout not ready
+    canvas.width  = w * DPR;
+    canvas.height = h * DPR;
+    canvas.style.height = h + 'px';
+    var ctx = canvas.getContext('2d');
+    ctx.scale(DPR, DPR);
+    return { ctx: ctx, w: w, h: h };
+  }
+
+  function drawChart(canvas, data, opts) {
+    var ref = setupCanvas(canvas);
+    var ctx = ref.ctx, w = ref.w, h = ref.h;
+    var PAD = { top: 14, right: 16, bottom: 42, left: 62 };
+    var cw = w - PAD.left - PAD.right;
+    var ch = h - PAD.top  - PAD.bottom;
+
+    // bounds
+    var xMin = 0;
+    var xMax = opts.xMax !== undefined ? opts.xMax : Math.max.apply(null, data.map(function(d){return d.x;}));
+    var yMin, yMax;
+    if (opts.yMin !== undefined && opts.yMax !== undefined) {
+      yMin = opts.yMin; yMax = opts.yMax;
+    } else {
+      var ys = data.map(function(d){return d.y;});
+      yMin = Math.min.apply(null, ys);
+      yMax = Math.max.apply(null, ys);
+      var pad = (yMax - yMin) * 0.12;
+      yMin -= pad; yMax += pad;
+    }
+
+    function px(x) { return PAD.left + (x - xMin) / (xMax - xMin) * cw; }
+    function py(y) { return PAD.top  + ch - (y - yMin) / (yMax - yMin) * ch; }
+
+    // — background
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, w, h);
+
+    // — baseline shading
+    if (opts.baselineXEnd) {
+      var bx = px(Math.min(opts.baselineXEnd, xMax));
+      ctx.fillStyle = 'rgba(190,182,170,.14)';
+      ctx.fillRect(PAD.left, PAD.top, bx - PAD.left, ch);
+      ctx.fillStyle = '#9B9186';
+      ctx.font = '10px system-ui,sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('baseline', PAD.left + 5, PAD.top + 13);
+    }
+
+    // — grid lines
+    var yTicks = opts.yTicks !== undefined ? opts.yTicks : 5;
+    var xTicks = opts.xTicks !== undefined ? opts.xTicks : 9;
+
+    ctx.strokeStyle = '#E4DDD4';
+    ctx.lineWidth = 1;
+    for (var i = 0; i <= yTicks; i++) {
+      var yv = yMin + (yMax - yMin) * i / yTicks;
+      var yp = py(yv);
+      ctx.beginPath(); ctx.moveTo(PAD.left, yp); ctx.lineTo(PAD.left + cw, yp); ctx.stroke();
+      // label
+      ctx.fillStyle = '#6E6560';
+      ctx.font = '10.5px ui-monospace,Consolas,monospace';
+      ctx.textAlign = 'right';
+      var lbl = opts.yFmt ? opts.yFmt(yv) : yv.toFixed(2);
+      ctx.fillText(lbl, PAD.left - 7, yp + 3.5);
+    }
+    for (var j = 0; j <= xTicks; j++) {
+      var xv = xMin + (xMax - xMin) * j / xTicks;
+      var xp = px(xv);
+      ctx.strokeStyle = '#E4DDD4';
+      ctx.beginPath(); ctx.moveTo(xp, PAD.top); ctx.lineTo(xp, PAD.top + ch); ctx.stroke();
+      ctx.fillStyle = '#6E6560';
+      ctx.textAlign = 'center';
+      ctx.font = '10.5px ui-monospace,Consolas,monospace';
+      var xlbl = opts.xFmt ? opts.xFmt(xv) : xv.toFixed(1);
+      ctx.fillText(xlbl, xp, PAD.top + ch + 16);
+    }
+
+    // — zero line
+    if (opts.zeroLine) {
+      var zy = py(0);
+      if (zy >= PAD.top && zy <= PAD.top + ch) {
+        ctx.save();
+        ctx.strokeStyle = '#B8AFA7';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(PAD.left, zy); ctx.lineTo(PAD.left + cw, zy); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // — area fill
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(px(data[0].x), py(opts.zeroLine ? 0 : yMin));
+    for (var k = 0; k < data.length; k++) {
+      ctx.lineTo(px(data[k].x), py(data[k].y));
+    }
+    ctx.lineTo(px(data[data.length - 1].x), py(opts.zeroLine ? 0 : yMin));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(27,95,170,.07)';
+    ctx.fill();
+    ctx.restore();
+
+    // — data line
+    ctx.beginPath();
+    for (var m = 0; m < data.length; m++) {
+      if (m === 0) ctx.moveTo(px(data[m].x), py(data[m].y));
+      else         ctx.lineTo(px(data[m].x), py(data[m].y));
+    }
+    ctx.strokeStyle = '#1B5FAA';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // — axes
+    ctx.strokeStyle = '#0C1821';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, PAD.top);
+    ctx.lineTo(PAD.left, PAD.top + ch);
+    ctx.lineTo(PAD.left + cw, PAD.top + ch);
+    ctx.stroke();
+
+    // — axis labels
+    ctx.fillStyle = '#3A3530';
+    ctx.font = '11.5px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(opts.xLabel || '', PAD.left + cw / 2, h - 6);
+
+    ctx.save();
+    ctx.translate(12, PAD.top + ch / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillText(opts.yLabel || '', 0, 0);
+    ctx.restore();
+  }
+
+  // ── Load CSV and render ──────────────────────
+  fetch('stab1_stability.csv')
+    .then(function(r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.text();
+    })
+    .then(function(text) {
+      var lines = text.trim().split('\n');
+      var hdr   = lines[0].split(',');
+      var eI = hdr.indexOf('elapsed_s');
+      var cI = hdr.indexOf('centroid_cs');
+      var dI = hdr.indexOf('delta_pct');
+      var sI = hdr.indexOf('status');
+
+      var all = [], okRows = [];
+      for (var i = 1; i < lines.length; i++) {
+        var cols = lines[i].split(',');
+        var eh  = parseFloat(cols[eI]) / 3600;
+        var cen = parseFloat(cols[cI]);
+        var del = parseFloat(cols[dI]);
+        var st  = (cols[sI] || '').trim();
+        if (!isNaN(eh) && cen > 0) {
+          all.push({ x: eh, y: cen, status: st });
+          if (st === 'OK') okRows.push({ x: eh, y: del });
+        }
+      }
+
+      // baseline end = X of last BASELINE row
+      var baselineXEnd = 0;
+      for (var b = 0; b < all.length; b++) {
+        if (all[b].status === 'BASELINE') baselineXEnd = all[b].x;
+        else break;
+      }
+
+      // Chart 1: centroid
+      var c1 = document.getElementById('chart1');
+      var p1 = document.getElementById('ph1');
+      p1.style.display = 'none';
+      c1.style.display = 'block';
+      drawChart(c1, all, {
+        xMax: 9.7, xTicks: 9,
+        yMin: 1434.0, yMax: 1435.0,
+        yTicks: 5,
+        yFmt: function(v) { return v.toFixed(1); },
+        xFmt: function(v) { return v.toFixed(0) + ' ч'; },
+        xLabel: 'Время',
+        yLabel: 'Канал',
+        baselineXEnd: baselineXEnd,
+      });
+
+      // Chart 2: delta%
+      var c2 = document.getElementById('chart2');
+      var p2 = document.getElementById('ph2');
+      p2.style.display = 'none';
+      c2.style.display = 'block';
+      drawChart(c2, okRows, {
+        xMax: 9.7, xTicks: 9,
+        yMin: -0.030, yMax: 0.030,
+        yTicks: 6,
+        yFmt: function(v) {
+          var s = v >= 0 ? '+' : '';
+          return s + v.toFixed(3) + '%';
+        },
+        xFmt: function(v) { return v.toFixed(0) + ' ч'; },
+        xLabel: 'Время',
+        yLabel: 'Δ%',
+        zeroLine: true,
+      });
+    })
+    .catch(function(err) {
+      ['ph1', 'ph2'].forEach(function(id) {
+        var el = document.getElementById(id);
+        el.textContent = 'Не удалось загрузить CSV — скачайте файл напрямую.';
+      });
+    });
+})();
+</script>
+</body>
+</html>

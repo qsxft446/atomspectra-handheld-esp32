@@ -1,0 +1,15 @@
+dependencies:
+  espressif/usb_host_cdc_acm: "^2.0.0"
+  joltwallet/littlefs: "^1.14.0"
+  espressif/mdns: "^1.2.0"
+  espressif/led_strip: "^2.5.5"
+  # #TFT-1: TFT ST7796U 480x320 + ёмкостный тач FT6336U (совместим по регистрам
+  # с семейством FT5x06) + LVGL через официальный порт-компонент esp_lvgl_port.
+  # Версии — ориентир на момент написания; если component manager не резолвит
+  # именно эти патч-версии, ослабьте до "*" для конкретного пакета и соберите —
+  # менеджер сам возьмёт актуальную из реестра (idf.py убьётся с понятной
+  # ошибкой резолвинга, если версии в принципе нет).
+  espressif/esp_lcd_st7796: "^1.3.0"
+  espressif/esp_lcd_touch_ft5x06: "^1.0.6"
+  espressif/esp_lvgl_port: "^2.4.0"
+  lvgl/lvgl: "^8.3.11"

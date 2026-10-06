@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtomSpectra · Спектр</title>
+<style>
+  :root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--bg); }
+  body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; -webkit-text-size-adjust:100%; padding-bottom:28px; }
+  a{ color:inherit; text-decoration:none; }
+  button,input{ font-family:inherit; }
+  .wrap{ max-width:1460px; margin:0 auto; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+  header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+  .brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+  .logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+  .logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+  .logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+  .chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+  nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+  nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+  nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+  .panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; }
+  .pad{ padding:13px 16px; }
+  .status{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; font-size:12.5px; color:var(--dim); padding:2px; }
+  .status .sep{ color:#3a443a; } .status .ac{ color:var(--accent); font-weight:600; } .status .w{ color:var(--txt); } .mut{ color:#6b756a; }
+  .bar{ height:8px; border-radius:4px; background:#1b211a; overflow:hidden; } .bar > i{ display:block; height:100%; border-radius:4px; }
+  .row{ display:flex; align-items:center; gap:16px; padding:12px 16px; flex-wrap:wrap; }
+  .row + .row{ border-top:1px solid #1b211a; }
+  .grp{ display:flex; gap:8px; }
+  .btn{ border-radius:8px; padding:9px 16px; font-size:13px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); }
+  .btn.sm{ padding:9px 14px; font-size:12.5px; }
+  .btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.5); color:var(--accent); font-weight:600; }
+  .btn.amber{ background:rgba(240,180,60,.08); border-color:rgba(240,180,60,.45); color:#f0c45a; }
+  .btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.45); color:#ff8a82; }
+  .seg{ display:flex; border:1px solid #2a322a; border-radius:7px; overflow:hidden; }
+  .seg button{ padding:7px 14px; font-size:12px; cursor:pointer; border:none; background:transparent; color:#9aa496; }
+  .seg button.on{ background:var(--accent); color:#0c1206; font-weight:700; }
+  .lbl{ font-size:11.5px; color:#6b756a; }
+  .big{ font-size:28px; font-weight:600; color:#e8efe2; letter-spacing:1px; }
+  .big.ac{ color:var(--accent); font-size:22px; } .big.w{ font-size:22px; }
+  .ml{ margin-left:auto; }
+  .overlay{ position:absolute; top:10px; right:14px; text-align:right; font-size:11.5px; line-height:1.6; color:#aeb6a8; background:rgba(8,10,8,.55); border:1px solid #283024; border-radius:6px; padding:7px 11px; pointer-events:none; min-width:160px; }
+  .inp{ background:#0c0f0b; border:1px solid #283024; color:#e8efe2; padding:9px 12px; border-radius:8px; font-size:12px; outline:none; }
+  .saved-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .card{ background:#0e120c; border:1px solid #222a20; border-radius:9px; padding:12px; cursor:pointer; }
+  .card.on{ background:rgba(110,168,255,.1); border-color:#6ea8ff; }
+  .cal-coef{ display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  .cal-coef span{ font-size:11.5px; color:#8a9686; width:74px; }
+  .cal-coef input{ flex:1; background:#0c0f0b; border:1px solid #283024; color:var(--accent); padding:7px 10px; border-radius:7px; font-size:12px; outline:none; }
+  @media (max-width:760px){ .saved-grid{ grid-template-columns:1fr 1fr } .bignums{ width:100% } }
+  @media (max-width:520px){ .big{ font-size:24px } .saved-grid{ grid-template-columns:1fr } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+    <div class="chips"><span class="chip ok"><span class="dot"></span>Прибор подключён</span><span class="chip" id="rssi">WiFi −52 dBm</span><span class="chip" id="ip">192.168.x.x</span></div>
+  </header>
+  <nav>
+    <span class="on">Спектр</span>
+    <a href="waterfall.html">Водопад →</a>
+    <a href="saved.html">Сохранённые</a>
+    <a href="system.html">Система</a>
+  </nav>
+
+  <div class="wrap">
+    <div class="status">
+      <span class="ac">CPS <span id="s-cps">185</span></span><span class="sep">|</span>
+      <span class="w"><span id="s-total">247 749</span> <span class="mut">counts</span></span><span class="sep">|</span>
+      <span id="s-up">25m 7s</span><span class="sep">|</span><span>CPU <span id="s-cpu">52</span>%</span><span class="sep">|</span>
+      <span>Lost <span id="s-lost">402</span></span><span class="sep">|</span><span>T 0/0/0 °C</span>
+    </div>
+
+    <section class="panel pad">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:#aeb6a8"><span><span style="color:var(--accent);font-weight:600">⛁ Flash LittleFS</span> &nbsp; <span id="m-flash">4 536 / 13 248 КБ (34.2%)</span></span><span class="mut" id="m-free">свободно 8 712 КБ</span></div>
+      <div class="bar"><i id="m-bar" style="width:34.2%;background:var(--accent);box-shadow:0 0 8px rgba(52,211,192,.4)"></i></div>
+    </section>
+
+    <section class="panel">
+      <div class="row">
+        <div class="grp"><button class="btn green" id="b-start">▶ Старт</button><button class="btn amber" id="b-stop">■ Стоп</button><button class="btn red" id="b-reset">↺ Сброс</button></div>
+        <div class="ml bignums" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <span class="big" id="d-time">00:25:07</span><span class="mut">|</span>
+          <span class="big ac"><span id="d-cps">185</span><span class="mut" style="font-size:12px"> CPS</span></span><span class="mut">|</span>
+          <span class="big w"><span id="d-total">247 749</span><span class="mut" style="font-size:12px"> counts</span></span>
+        </div>
+      </div>
+      <div class="row">
+        <div style="display:flex;align-items:center;gap:8px"><span class="lbl">Шкала Y</span><div class="seg" id="seg-scale"><button data-v="lin" class="on">Lin</button><button data-v="log">Log</button></div></div>
+        <div style="display:flex;align-items:center;gap:8px"><span class="lbl">Величина</span><div class="seg" id="seg-y"><button data-v="counts" class="on">Counts</button><button data-v="cps">CPS</button></div></div>
+        <div style="display:flex;align-items:center;gap:8px"><span class="lbl">Ось X</span><div class="seg" id="seg-x"><button data-v="ch" class="on">Ch</button><button data-v="kev">keV</button></div></div>
+        <div class="ml" style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#6b756a"><span style="width:18px;height:3px;border-radius:2px;background:var(--accent);display:inline-block"></span>живой</div>
+      </div>
+    </section>
+
+    <section class="panel pad">
+      <div style="position:relative">
+        <canvas id="chart" width="1400" height="520" style="width:100%;height:auto;display:block;cursor:crosshair"></canvas>
+        <div class="overlay"><div id="o-1" style="color:#5b655a">наведите курсор</div><div id="o-2" style="color:#5b655a">на спектр</div><div class="mut" id="o-3">LIVE · lin / Counts</div></div>
+      </div>
+    </section>
+
+    <div class="row" style="padding:0;gap:8px">
+      <button class="btn sm green" id="b-save">💾 Сохранить</button>
+      <button class="btn sm">Export XML</button><button class="btn sm">Export CSV</button>
+      <button class="btn sm">Инфо</button><button class="btn sm">Лог</button>
+      <button class="btn sm red">Reboot прибора</button><button class="btn sm red">Reboot ESP</button><button class="btn sm">WiFi Reset</button>
+      <div class="grp ml"><input class="inp" placeholder="команда, напр. -inf" style="width:180px;max-width:44vw"><button class="btn sm green">Send</button></div>
+    </div>
+
+    <section class="panel">
+      <div class="row" id="cal-head" style="cursor:pointer;border:none">
+        <span id="cal-arrow" style="color:var(--accent)">▶</span>
+        <span style="font-size:13px;font-weight:600;color:#e8efe2">Калибровка энергии</span>
+        <span class="lbl">E(ch) = e + d·ch + c·ch² + b·ch³ + a·ch⁴</span>
+        <span class="ml" style="font-size:11px;color:var(--accent);border:1px solid rgba(52,211,192,.35);border-radius:999px;padding:3px 10px">Задана</span>
+      </div>
+      <div id="cal-body" style="display:none;padding:0 16px 14px">
+        <div style="max-width:420px">
+          <div class="cal-coef"><span>a (ch⁴)</span><input value="5.67558675724181e-13"></div>
+          <div class="cal-coef"><span>b (ch³)</span><input value="-6.49007437672639e-9"></div>
+          <div class="cal-coef"><span>c (ch²)</span><input value="0.0000267593756344673"></div>
+          <div class="cal-coef"><span>d (ch¹)</span><input value="0.383773900647254"></div>
+          <div class="cal-coef"><span>e (offset)</span><input value="3.52287433185117"></div>
+        </div>
+        <div class="grp" style="margin-top:8px;flex-wrap:wrap"><button class="btn sm green">Применить</button><button class="btn sm">Очистить</button><button class="btn sm">Считать с прибора</button></div>
+      </div>
+    </section>
+
+    <section class="panel pad">
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="font-size:14px;font-weight:600;color:#e8efe2">Сохранённые спектры</span><span class="lbl">клик — наложить поверх живого</span></div>
+      <div id="saved-empty" style="font-size:12.5px;color:#5b655a;font-style:italic">Нет сохранённых</div>
+      <div id="saved-grid" class="saved-grid" style="display:none"></div>
+    </section>
+  </div>
+
+<script>
+"use strict";
+(function(){
+  var M={l:64,t:16,r:18,b:38}, CH={w:1400,h:520};
+  var st={ rec:true, scale:'lin', yMode:'counts', xUnit:'ch', elapsed:1507, cps:185, total:247749,
+           flashUsed:4536, flashTotal:13248, sec:0, overlayId:null };
+  var calK=0.383773900647254, calOff=3.52287433185117, W=1340, spec, specMax=1, hoverBin=null, saved=[], seq=0;
+
+  function rnd(){ return Math.random()+Math.random()+Math.random()-1.5; }
+  function energy(ch){ return calOff+calK*ch; }
+  function plot(){ return {l:M.l,t:M.t,w:CH.w-M.l-M.r,h:CH.h-M.t-M.b}; }
+  function build(target){
+    var peaks=[[186,16,5],[242,13,5],[295,22,6],[352,30,6],[511,40,7],[609,66,7],[662,150,6],[768,20,7],[934,14,8],[1120,46,9],[1238,22,9],[1378,16,10],[1460,90,11],[1764,52,12],[2204,18,14],[2614,60,15]];
+    var arr=new Float32Array(W),mx=0;
+    for(var x=0;x<W;x++){ var ch=x/(W-1)*8191,E=ch*0.3838,lc=1-Math.exp(-E/22),c=360*Math.exp(-E/210)+45*Math.exp(-E/780)+3;
+      for(var p=0;p<peaks.length;p++){ var P=peaks[p]; c+=P[1]*Math.exp(-((E-P[0])*(E-P[0]))/(2*P[2]*P[2])); }
+      c*=lc; c*=1+.05*rnd(); if(c<0)c=0; arr[x]=c; if(c>mx)mx=c; }
+    if(target){ var k=target/mx; for(var i=0;i<W;i++)arr[i]*=k; mx=target; } specMax=mx; return arr;
+  }
+  function niceMax(v){ if(v<=0)return 1; var e=Math.pow(10,Math.floor(Math.log10(v))),f=v/e,n; n=f<=1?1:f<=2?2:f<=5?5:f<=8?8:10; return n*e; }
+  function sv(c){ return st.yMode==='cps'?c/st.elapsed:c; }
+  function fmtY(v){ if(st.yMode==='cps')return v<1?v.toFixed(2):v<10?v.toFixed(1):Math.round(v); return Math.round(v).toLocaleString('ru-RU'); }
+  function ac(){ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0'; }
+
+  function draw(){
+    var cv=document.getElementById('chart'),ctx=cv.getContext('2d'),p=plot();
+    ctx.clearRect(0,0,CH.w,CH.h); ctx.fillStyle='#0c0f0b'; ctx.fillRect(p.l,p.t,p.w,p.h);
+    var log=st.scale==='log',ymaxRaw=sv(specMax),ymax=log?ymaxRaw:niceMax(ymaxRaw);
+    function yP(v){ return log?p.t+p.h*(1-Math.log(1+Math.max(0,v))/Math.log(1+ymaxRaw)):p.t+p.h*(1-v/ymax); }
+    ctx.font="10.5px ui-monospace,monospace"; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillStyle='#5a645a';
+    if(log){ for(var e=-3;e<=6;e++){ var v=Math.pow(10,e); if(v<ymaxRaw/1e4||v>ymaxRaw)continue; var y=yP(v); ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(p.l,y); ctx.lineTo(p.l+p.w,y); ctx.stroke(); ctx.fillText(fmtY(v),p.l-7,y); } }
+    else { for(var k=0;k<=5;k++){ var vv=ymax*k/5,yy=yP(vv); ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(p.l,yy); ctx.lineTo(p.l+p.w,yy); ctx.stroke(); ctx.fillText(fmtY(vv),p.l-7,yy); } }
+    ctx.save(); ctx.translate(16,p.t+p.h/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center'; ctx.fillStyle='#4a534a'; ctx.fillText(st.yMode==='cps'?'CPS':'Counts',0,0); ctx.restore();
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    for(var j=0;j<=8;j++){ var fr=j/8,x=p.l+fr*p.w,ch=fr*8191; ctx.strokeStyle='rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(x,p.t); ctx.lineTo(x,p.t+p.h); ctx.stroke(); ctx.fillStyle='#6b756a'; ctx.fillText(st.xUnit==='ch'?Math.round(ch):Math.round(energy(ch)),x,p.t+p.h+6); }
+    ctx.fillStyle='#4a534a'; ctx.fillText(st.xUnit==='ch'?'Channel':'Энергия, кэВ',p.l+p.w/2,p.t+p.h+19);
+    var ov=saved.find(function(s){return s.id===st.overlayId;});
+    if(ov){ ctx.beginPath(); for(var x2=0;x2<W;x2++){ var xx=p.l+x2/(W-1)*p.w,y2=yP(sv(ov.arr[x2])); x2?ctx.lineTo(xx,y2):ctx.moveTo(xx,y2); } ctx.strokeStyle='#6ea8ff'; ctx.setLineDash([5,4]); ctx.lineWidth=1.2; ctx.globalAlpha=.85; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1; }
+    var A=ac();
+    ctx.beginPath(); for(var x3=0;x3<W;x3++){ var xa=p.l+x3/(W-1)*p.w,ya=yP(sv(spec[x3])); x3?ctx.lineTo(xa,ya):ctx.moveTo(xa,ya); }
+    ctx.lineTo(p.l+p.w,p.t+p.h); ctx.lineTo(p.l,p.t+p.h); ctx.closePath();
+    var g=ctx.createLinearGradient(0,p.t,0,p.t+p.h); g.addColorStop(0,A+'66'); g.addColorStop(1,A+'0d'); ctx.fillStyle=g; ctx.fill();
+    ctx.beginPath(); for(var x4=0;x4<W;x4++){ var xb=p.l+x4/(W-1)*p.w,yb=yP(sv(spec[x4])); x4?ctx.lineTo(xb,yb):ctx.moveTo(xb,yb); }
+    ctx.strokeStyle=A; ctx.lineWidth=1.2; ctx.stroke();
+    if(hoverBin!=null){ var hx=p.l+hoverBin/(W-1)*p.w,hy=yP(sv(spec[hoverBin])); ctx.strokeStyle=A; ctx.globalAlpha=.55; ctx.beginPath(); ctx.moveTo(hx,p.t); ctx.lineTo(hx,p.t+p.h); ctx.stroke(); ctx.globalAlpha=1; ctx.fillStyle=A; ctx.beginPath(); ctx.arc(hx,hy,3.2,0,7); ctx.fill(); }
+    ctx.strokeStyle='#283024'; ctx.lineWidth=1; ctx.strokeRect(p.l+.5,p.t+.5,p.w,p.h);
+  }
+
+  function pad(n){ return (''+n).padStart(2,'0'); }
+  function hms(s){ return pad((s/3600)|0)+':'+pad(((s%3600)/60)|0)+':'+pad(s%60); }
+  function fmt(n){ return Math.round(n).toLocaleString('ru-RU'); }
+  function set(id,v){ var e=document.getElementById(id); if(e)e.textContent=v; }
+  function refresh(){ set('s-cps',st.cps); set('d-cps',st.cps); set('s-total',fmt(st.total)); set('d-total',fmt(st.total)); set('d-time',hms(st.elapsed));
+    set('o-3',(st.rec?'LIVE':'PAUSE')+' · '+(st.scale==='log'?'log':'lin')+' / '+(st.yMode==='cps'?'CPS':'Counts')); }
+
+  function bindSeg(id,apply){ var seg=document.getElementById(id); seg.addEventListener('click',function(e){ var b=e.target.closest('button'); if(!b)return; [].forEach.call(seg.children,function(c){c.classList.remove('on');}); b.classList.add('on'); apply(b.getAttribute('data-v')); draw(); refresh(); }); }
+  function onMove(e){ var cv=document.getElementById('chart'),r=cv.getBoundingClientRect(),sx=cv.width/r.width,p=plot(),mx=(e.clientX-r.left)*sx-p.l;
+    if(mx<0||mx>=p.w){ onLeave(); return; } var bin=Math.round(mx/p.w*(W-1)); hoverBin=Math.max(0,Math.min(W-1,bin));
+    var ch=hoverBin/(W-1)*8191,cnt=Math.round(spec[hoverBin]),o1=document.getElementById('o-1'),o2=document.getElementById('o-2');
+    o1.style.color=ac(); o2.style.color=ac(); o1.textContent='ch '+Math.round(ch)+' · '+Math.round(energy(ch))+' кэВ'; o2.textContent=fmt(cnt)+' counts · '+(cnt/st.elapsed).toFixed(2)+' cps'; draw(); }
+  function onLeave(){ hoverBin=null; var o1=document.getElementById('o-1'),o2=document.getElementById('o-2'); o1.style.color='#5b655a'; o2.style.color='#5b655a'; o1.textContent='наведите курсор'; o2.textContent='на спектр'; draw(); }
+
+  function renderSaved(){
+    var grid=document.getElementById('saved-grid'),empty=document.getElementById('saved-empty');
+    if(!saved.length){ grid.style.display='none'; empty.style.display='block'; return; }
+    empty.style.display='none'; grid.style.display='grid'; grid.innerHTML='';
+    saved.forEach(function(sp){ var d=document.createElement('div'); d.className='card'+(st.overlayId===sp.id?' on':'');
+      d.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12.5px;font-weight:600;color:#e8efe2">'+sp.label+'</span><span data-del="'+sp.id+'" style="color:#6b756a;font-size:15px;padding:0 4px;cursor:pointer">×</span></div><div style="font-size:11px;color:#8a9686;line-height:1.6">'+sp.time+'<br>'+fmt(sp.total)+' counts</div>';
+      d.onclick=function(ev){ if(ev.target.getAttribute('data-del')){ saved=saved.filter(function(x){return x.id!=sp.id;}); if(st.overlayId===sp.id)st.overlayId=null; renderSaved(); draw(); return; } st.overlayId=st.overlayId===sp.id?null:sp.id; renderSaved(); draw(); };
+      grid.appendChild(d); });
+  }
+
+  function init(){
+    spec=build(640); draw(); refresh();
+    var cv=document.getElementById('chart'); cv.addEventListener('mousemove',onMove); cv.addEventListener('mouseleave',onLeave);
+    bindSeg('seg-scale',function(v){ st.scale=v; }); bindSeg('seg-y',function(v){ st.yMode=v; }); bindSeg('seg-x',function(v){ st.xUnit=v; });
+    document.getElementById('b-start').onclick=function(){ st.rec=true; refresh(); };
+    document.getElementById('b-stop').onclick=function(){ st.rec=false; refresh(); };
+    document.getElementById('b-reset').onclick=function(){ spec=build(60); specMax=60; st.total=0; st.elapsed=1; draw(); };
+    document.getElementById('b-save').onclick=function(){ var id=++seq,d=new Date(),time=pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); saved.unshift({id:id,label:'Спектр '+id,time:time,total:st.total,arr:Float32Array.from(spec)}); renderSaved(); };
+    var ch=document.getElementById('cal-head'); ch.onclick=function(){ var b=document.getElementById('cal-body'),open=b.style.display==='none'; b.style.display=open?'block':'none'; document.getElementById('cal-arrow').textContent=open?'▼':'▶'; };
+    setInterval(function(){ st.sec++; if(st.rec){ st.cps=178+Math.round(12*Math.random()+7*Math.sin(st.sec/6)); for(var i=0;i<40;i++){ var x=(Math.random()*W)|0; spec[x]=Math.max(0,spec[x]+rnd()*1.5); } st.elapsed++; st.total+=st.cps; if(st.sec%2===0)draw(); refresh(); } },1000);
+  }
+  if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded',init);
+
+  /* ДЕВАЙС: poll '/api/spectrum.json' → spec=Float32Array(json.spectrum); specMax=max; draw();
+     и '/api/status' → st.cps/total/elapsed; refresh();  (см. waterfall.html) */
+})();
+</script>
+</body>
+</html>

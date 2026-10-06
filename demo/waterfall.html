@@ -1,0 +1,1571 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<script src="demo-shim.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title data-i18n="title">AtomSpectra · Водопад</title>
+<style>
+:root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; background:var(--bg); }
+body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; padding-bottom:28px; }
+a{ color:inherit; text-decoration:none; }
+button,input,select{ font-family:inherit; }
+.wrap{ max-width:1460px; margin:0 auto; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+.brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+.logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+.logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+.logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+.chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+.chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+.panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; }
+.pad{ padding:13px 16px; }
+.row{ display:flex; align-items:center; gap:14px; padding:11px 16px; flex-wrap:wrap; }
+.row + .row{ border-top:1px solid #1b211a; }
+.grp{ display:flex; gap:8px; }
+.btn{ border-radius:8px; padding:8px 13px; font-size:12.5px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); }
+.btn.sm{ padding:7px 11px; font-size:12px; }
+.btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.5); color:var(--accent); font-weight:600; }
+.btn.amber{ background:rgba(240,180,60,.08); border-color:rgba(240,180,60,.45); color:#f0c45a; }
+.btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.45); color:#ff8a82; }
+.btn:hover:not(:disabled){ filter:brightness(1.2); }
+.btn:disabled{ opacity:.4; cursor:default; }
+.inp,.sel{ background:#0c0f0b; border:1px solid #283024; color:#e8efe2; padding:7px 10px; border-radius:7px; font-size:12px; outline:none; }
+.inp[type=number]{ width:74px; }
+.lbl{ font-size:11.5px; color:#6b756a; }
+.ml{ margin-left:auto; }
+.bar{ height:7px; border-radius:4px; background:#1b211a; overflow:hidden; min-width:120px; }
+.bar > i{ display:block; height:100%; border-radius:4px; transition:width .3s,background .3s; }
+.ind{ display:inline-flex; align-items:center; gap:8px; font-size:12px; color:#aeb6a8; }
+.ind b{ color:#e8efe2; font-weight:600; }
+#state{ font-size:12.5px; }
+.st{ color:#aeb6a8; } .warn{ color:#f0c45a; } .err{ color:#ff8a82; } .rec{ color:#ff5247; font-weight:600; }
+#state{ border:1px solid; border-radius:8px; padding:6px 12px; font-size:12.5px; line-height:1; white-space:nowrap; }
+#rectime{ font-size:14px; letter-spacing:1px; color:var(--accent); font-weight:600; }
+#wrap-wf{ position:relative; display:block; border:1px solid var(--bd); border-radius:8px; overflow:hidden; }
+#wf{ display:block; background:#000; cursor:crosshair; width:100%; height:auto; max-width:100%; image-rendering:pixelated; image-rendering:crisp-edges; }
+#cur{ position:absolute; left:0; top:0; pointer-events:none; width:100%; height:100%; }
+#hud{ position:absolute; right:8px; top:8px; background:rgba(8,10,8,.7); padding:6px 10px; font-size:11px; color:#aeb6a8; white-space:pre; border:1px solid #283024; border-radius:6px; line-height:1.5; }
+#wf-row{ display:flex; gap:8px; align-items:stretch; }
+#wf-row #wrap-wf{ flex:1 1 auto; min-width:0; }
+#wf-scroll{ writing-mode:vertical-lr; -webkit-appearance:slider-vertical; width:16px; flex:0 0 16px; height:auto; margin:0; cursor:pointer; accent-color:var(--accent); background:#10140f; border:1px solid var(--bd); border-radius:8px; }
+#wf-scroll:disabled{ opacity:.35; cursor:default; }
+#log{ box-sizing:border-box; width:100%; height:120px; overflow:auto; background:#0b0e0a; border:1px solid #1b211a; border-radius:8px; padding:10px 12px; font-size:11px; white-space:pre-wrap; color:#7c887c; line-height:1.5; }
+.seg{ display:flex; border:1px solid #2a322a; border-radius:7px; overflow:hidden; }
+.seg button{ padding:6px 11px; font-size:11.5px; cursor:pointer; border:none; background:transparent; color:#9aa496; }
+.seg button.on{ background:var(--accent); color:#0c1206; font-weight:700; }
+.help{ font-size:11.5px; color:#7c887c; line-height:1.55; max-width:1100px; }
+.help summary{ cursor:pointer; color:var(--accent); padding:7px 0; }
+.help code{ color:#f0c45a; background:#0c0f0b; padding:1px 5px; border-radius:3px; font-size:11px; }
+.help b{ color:#aeb6a8; }
+.sw{ display:inline-block; width:130px; height:9px; vertical-align:middle; border-radius:3px; border:1px solid #283024; cursor:pointer; transition:transform .15s; }
+.sw:hover{ transform:scaleY(1.3); }
+.palmod{ position:fixed; inset:0; background:rgba(0,0,0,.78); z-index:100; display:none; align-items:center; justify-content:center; padding:20px; }
+.palmod.on{ display:flex; }
+.palmod .pal{ background:var(--panel); border:1px solid var(--bd); border-radius:12px; max-width:520px; width:100%; max-height:80vh; overflow:auto; }
+.palmod h3{ margin:0; padding:14px 18px; border-bottom:1px solid #1b211a; font-size:14px; color:#e8efe2; display:flex; justify-content:space-between; align-items:center; }
+.palmod h3 button{ background:none; border:none; color:#6b756a; font-size:22px; cursor:pointer; padding:0; }
+.palmod ul{ list-style:none; margin:0; padding:8px; }
+.palmod li{ display:flex; align-items:center; gap:14px; padding:10px 12px; border-radius:8px; cursor:pointer; }
+.palmod li:hover{ background:#161b14; }
+.palmod li.on{ background:var(--accent-dim); border:1px solid rgba(52,211,192,.4); }
+.palmod .swatch{ width:160px; height:14px; border-radius:4px; flex-shrink:0; }
+.palmod .nm{ font-size:13px; color:#cfd6cd; }
+.palmod .desc{ font-size:11px; color:#6b756a; margin-top:2px; }
+</style>
+</head>
+<body>
+<header>
+<div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+<div class="chips"><span class="chip ok"><span class="dot"></span><span id="device-chip" data-i18n="device">Прибор</span></span><span class="chip" id="ip-chip">—</span><button id="langBtn" class="chip" style="cursor:pointer;background:#161b14;border:1px solid #283024;color:#aeb6a8;font-weight:600;padding:3px 8px;font-size:10.5px;line-height:1.2;min-width:28px;text-align:center" title="Switch language / Сменить язык">EN</button></div>
+</header>
+<nav>
+<a href="index.html" data-i18n="nav.spectrum">Спектр</a>
+<span class="on" data-i18n="nav.waterfall">Водопад</span>
+<a href="saved.html" data-i18n="nav.saved">Сохранённые</a>
+<a href="system.html" data-i18n="nav.system">Система</a>
+<a href="service.html" data-i18n="nav.service">Сервис</a>
+</nav>
+
+<div class="wrap">
+
+<section class="panel">
+<div class="row">
+<div class="grp">
+<button class="btn green" id="bStart"><span data-i18n="btn.start">&#9654; Старт</span></button>
+<button class="btn amber" id="bStop"><span data-i18n="btn.stop">&#9632; Стоп</span></button>
+<button class="btn red" id="bClear"><span data-i18n="btn.clear">&#128465; Очистить</span></button>
+<button class="btn" id="bExportN42"><span data-i18n="btn.export_n42">&#11015; Экспорт .n42</span></button>
+<button class="btn" id="bExportAswf"><span data-i18n="btn.export_aswf">&#11015; Экспорт .aswf</span></button>
+<!-- #REC-11-A1: FSA-стрим на диск деприкейтнут (был #REC-9; F5 терял данные).
+     Запись теперь автономна на плате (сегменты на Flash); забор — внешним вьювером.
+     Кнопка скрыта; JS оставлен спящим (срабатывает только по клику). -->
+<button class="btn" id="bDisk" data-i18n-title="btn.disk_title" title="Сохранять входящий стрим в .aswf-файл на диске ПК" style="display:none"><span id="bDiskTxt" data-i18n="btn.disk">&#128190; Стрим на диск&hellip;</span></button>
+</div>
+</div>
+
+<div class="row">
+<label class="lbl"><span data-i18n="lbl.interval_s">Интервал, с</span> <input class="inp" type="number" id="iv" min="5" max="3600" value="5" title="5…3600 с (до 1 ч): большой интервал = автономная многосуточная запись на Flash"></label>
+<button class="btn sm" id="bIv" data-i18n="btn.apply">применить</button>
+<label class="lbl" data-i18n-title="lbl.persist_title" title="Выбор места хранения водопада"><input type="checkbox" id="persist"> <span data-i18n-html="lbl.persist_flash">&#128205; хранить во Flash <span style="color:#5b655a">(без галочки — только кольцо ОЗУ)</span></span></label>
+<span class="st warn" id="flashst"></span>
+</div>
+
+<div class="row" id="indic">
+<span class="st" id="state">&hellip;</span>
+<span class="ind"><span data-i18n="lbl.rec_time">&#9201; Время записи:</span> <b id="rectime">00:00:00</b></span>
+<span class="ind" data-i18n-title="lbl.ring_title" title="заполнение кольца в PSRAM — последние строки"><span data-i18n="lbl.ring">Кольцо ОЗУ</span> <b id="ringtxt">0/0</b><span class="bar"><i id="ringfi" style="width:0%;background:var(--accent)"></i></span></span>
+<span class="ind" id="flashwrap" data-i18n-title="lbl.flash_title" title="занятость флэш-памяти платы"><span data-i18n="lbl.flash">Flash</span> <b id="flashtxt">—</b><span class="bar"><i id="flashfi" style="width:0%;background:var(--accent)"></i></span></span>
+<span class="ind" id="diskwrap" data-i18n-title="lbl.disk_title" title="Файл, в который идёт запись стрима (браузер показывает только имя, не путь к папке)" style="display:none"><span data-i18n="lbl.disk">&#128190; Диск:</span> <b id="disktxt">—</b></span>
+<span class="ind" id="segwrap" data-i18n-title="lbl.seg_title" title="Завершённые сегменты водопада на Flash платы (единица автономной записи и забора)"><span data-i18n="lbl.seg">&#128190; Сегменты</span> <b id="segtxt">0</b><span id="segdrop" class="err" style="margin-left:6px;display:none"></span></span>
+</div>
+</section>
+
+<section class="panel">
+<div class="row">
+<label class="lbl"><span data-i18n="lbl.axis_x">Ось X</span> <select class="sel" id="axis"><option value="ch" data-i18n="opt.channels">каналы</option><option value="kev" data-i18n="opt.kev">кэВ</option></select></label>
+<label class="lbl"><span data-i18n="lbl.brightness">Яркость</span> <select class="sel" id="scale"><option value="log" data-i18n="opt.log">лог</option><option value="lin" data-i18n="opt.lin">лин</option></select></label>
+<label class="lbl"><span data-i18n="lbl.contrast">Контраст</span> <input type="range" id="gain" min="1" max="100" value="40" style="vertical-align:middle"></label>
+<label class="lbl"><span data-i18n="lbl.palette">Палитра</span> <span class="sw" id="palSw" data-i18n-title="lbl.palette_title" title="Сменить цветовую палитру" onclick="openPalette()"></span> <span id="palName" style="color:var(--accent);font-size:11.5px">Inferno</span></label>
+<label class="lbl"><span data-i18n="lbl.channels">Каналы</span> <input class="inp" type="number" id="chLo" min="0" max="8191" value="0"> – <input class="inp" type="number" id="chHi" min="1" max="8192" value="8192"></label>
+<button class="btn sm" id="bFit" data-i18n="btn.fit_reset">сброс зума</button>
+</div>
+</section>
+
+<section class="panel pad">
+<div id="wf-row">
+<div id="wrap-wf">
+<canvas id="wf" width="900" height="520"></canvas>
+<canvas id="cur" width="900" height="520"></canvas>
+<div id="hud"></div>
+</div>
+<input id="wf-scroll" type="range" min="0" max="0" value="0" step="1" title="прокрутка истории спектрограммы / spectrogram history scroll" aria-label="spectrogram scroll">
+</div>
+</section>
+
+<section class="panel">
+<div class="row">
+<span class="lbl" style="color:#aeb6a8;font-weight:600" data-i18n="lbl.slice">Срез спектра</span>
+<span class="lbl" id="slcInfo" data-i18n="slc.live">live &middot; последняя строка</span>
+<span class="ml lbl">Y</span>
+<div class="seg" id="slcSeg">
+<button data-v="log" class="on" data-i18n="opt.log">лог</button><button data-v="lin" data-i18n="opt.lin">лин</button>
+</div>
+</div>
+<div style="padding:0 16px 14px">
+<canvas id="slc" width="900" height="180" style="display:block;width:100%;height:auto;border:1px solid var(--bd);border-radius:6px;background:#000"></canvas>
+</div>
+</section>
+
+<section class="panel pad">
+<details class="help" id="oflCard">
+<summary data-i18n="ofl.summary">&#128228; Автономная выгрузка сегментов (HTTP на ваш ПК/NAS)</summary>
+<div style="padding:8px 2px 2px">
+ <div class="row" style="padding-left:0;padding-right:0">
+  <label class="lbl" style="font-size:12.5px;color:var(--txt)"><input type="checkbox" id="oflEn" style="vertical-align:middle"> <span data-i18n="ofl.enabled">Включить автоотправку завершённых сегментов</span></label>
+ </div>
+ <div class="row" style="padding-left:0;padding-right:0">
+  <label class="lbl"><span data-i18n="ofl.transport">Транспорт</span> <select class="sel" id="oflTr" disabled><option data-i18n="ofl.transport_http">HTTP (локальная сеть)</option></select></label>
+  <span class="lbl" style="color:#5b655a" data-i18n="ofl.transport_note">HTTPS/SMB — позже (#REC-11-B)</span>
+ </div>
+ <div class="row" style="padding-left:0;padding-right:0">
+  <label class="lbl" style="flex:1 1 100%"><span data-i18n="ofl.url">Адрес приёмника</span> <input class="inp" id="oflUrl" style="width:min(360px,90%)" data-i18n-placeholder="ofl.url_ph" placeholder="http://<адрес-ПК>:8080/wf"></label>
+ </div>
+ <div class="row" style="padding-left:0;padding-right:0">
+  <label class="lbl"><span data-i18n="ofl.user">Логин</span> <input class="inp" id="oflUser" autocomplete="off" style="width:130px"></label>
+  <label class="lbl"><span data-i18n="ofl.pass">Пароль</span> <input class="inp" id="oflPass" type="password" autocomplete="new-password" data-i18n-placeholder="ofl.pass_ph" placeholder="пусто = не менять" style="width:150px"></label>
+  <button class="btn sm green" id="oflSave" data-i18n="ofl.save">Сохранить</button>
+  <span id="oflMsg" style="font-size:11.5px;color:#6b756a"></span>
+ </div>
+ <div class="row" style="padding-left:0;padding-right:0;color:#8a9483;font-size:11.5px"><span id="oflStat">—</span></div>
+ <p style="margin:6px 0 0;color:#6b756a;font-size:11.5px;line-height:1.5" data-i18n-html="ofl.note">Плата сама шлёт каждый завершённый сегмент <code>.aswf</code> POST-запросом на указанный адрес. Только HTTP в локальной сети. <b>Народмон запрещён</b> — адрес с «narodmon» не примется.</p>
+</div>
+</details>
+</section>
+
+<section class="panel pad">
+<details class="help">
+<summary data-i18n="help.summary">&#10067; Как идёт автономная запись и забор данных</summary>
+<div data-i18n-html="help.body">
+<p><b>Автономная запись.</b> Нажмите «Старт» — плата сама пишет водопад сегментами (<code>.aswf</code>) во Flash. Браузер нужен только чтобы нажать Старт/Стоп; после старта страницу можно закрыть — запись продолжится на плате.</p>
+<p><b>Хранилище — кольцо keep-last.</b> Сегменты копятся во Flash; когда место кончается, затирается старейший незабранный сегмент (индикатор «&#8722;N (кольцо)»). На Flash всегда остаётся последний отрезок.</p>
+<p><b>Забор данных.</b> Готовые сегменты берёт внешний вьювер по сети (список — <code>/api/waterfall/segments</code>, файл — <code>/api/waterfall/segment?name=</code>) и при необходимости сшивает несколько <code>.aswf</code> в один. Live-картинка на этой странице идёт по WebSocket из кольца ОЗУ и Flash не требует.</p>
+<p><b>Экспорт .n42</b> — снимок текущего кольца ОЗУ (последние ~256 строк), работает всегда.</p>
+</div>
+</details>
+</section>
+
+<pre id="log"></pre>
+</div>
+
+<div class="palmod" id="palMod">
+<div class="pal">
+<h3><span data-i18n="pal.title">Цветовая палитра</span><button onclick="closePalette()">&times;</button></h3>
+<ul id="palList"></ul>
+</div>
+</div>
+
+<script>
+"use strict";
+
+// === i18n: RU/EN словарь + переключатель ===
+var DICT={
+ ru:{
+  "title":"AtomSpectra · Водопад","device":"Прибор",
+  "nav.spectrum":"Спектр","nav.waterfall":"Водопад","nav.saved":"Сохранённые","nav.system":"Система","nav.service":"Сервис",
+  "btn.start":"▶ Старт","btn.stop":"■ Стоп","btn.clear":"🗑 Очистить","btn.export_n42":"⬇ Экспорт .n42","btn.export_aswf":"⬇ Экспорт .aswf",
+  "btn.disk":"💾 Стрим на диск…","btn.disk_stop":"■ Стрим на диск (стоп)",
+  "btn.disk_title":"Сохранять входящий стрим в .aswf-файл на диске ПК",
+  "lbl.interval_s":"Интервал, с","btn.apply":"применить",
+  "lbl.persist_flash":"📍 хранить во Flash <span style=\"color:#5b655a\">(без галочки — только кольцо ОЗУ)</span>",
+  "lbl.persist_title":"Выбор места хранения водопада",
+  "lbl.rec_time":"⏱ Время записи:","lbl.ring":"Кольцо ОЗУ","lbl.ring_title":"заполнение кольца в PSRAM — последние строки",
+  "lbl.flash":"Flash","lbl.flash_title":"занятость флэш-памяти платы","lbl.disk":"💾 Диск:",
+  "lbl.seg":"💾 Сегменты","lbl.seg_title":"Завершённые сегменты водопада на Flash платы (единица автономной записи и забора)",
+  "seg.dropped":" −%1 (кольцо)",
+  "lbl.disk_title":"Файл, в который идёт запись стрима. Браузер по приватности не раскрывает путь к папке — показано только имя файла (папку вы выбрали в диалоге «Сохранить как»).",
+  "disk.ind":"%1 · %2 стр. · %3 МБ · %4","disk.ram_tag":" · буфер ОЗУ (скачается на «Стоп»)",
+  "help.summary":"❓ Как идёт автономная запись и забор данных",
+  "help.body":"<p><b>Автономная запись.</b> Нажмите «Старт» — плата сама пишет водопад сегментами (<code>.aswf</code>) во Flash. Браузер нужен только чтобы нажать Старт/Стоп; после старта страницу можно закрыть — запись продолжится на плате.</p><p><b>Хранилище — кольцо keep-last.</b> Сегменты копятся во Flash; когда место кончается, затирается старейший незабранный сегмент (индикатор «−N (кольцо)»). На Flash всегда остаётся последний отрезок.</p><p><b>Забор данных.</b> Готовые сегменты берёт внешний вьювер по сети (список — <code>/api/waterfall/segments</code>, файл — <code>/api/waterfall/segment?name=</code>) и при необходимости сшивает несколько <code>.aswf</code> в один. Live-картинка на этой странице идёт по WebSocket из кольца ОЗУ и Flash не требует.</p><p><b>Экспорт .n42</b> — снимок текущего кольца ОЗУ (последние ~256 строк), работает всегда.</p>",
+  "lbl.axis_x":"Ось X","opt.channels":"каналы","opt.kev":"кэВ","lbl.brightness":"Яркость",
+  "opt.log":"лог","opt.lin":"лин","lbl.contrast":"Контраст","lbl.palette":"Палитра",
+  "lbl.palette_title":"Сменить цветовую палитру","lbl.channels":"Каналы","btn.fit_reset":"сброс зума",
+  "lbl.slice":"Срез спектра","slc.live":"live · последняя строка",
+  "slc.no_data":"нет данных","slc.wait":"ожидание данных…",
+  "slc.cursor_prefix":"под курсором · #","slc.live_prefix":"live · #",
+  "slc.empty_fallback":"строка #%1 пуста (0 счётов) · показан live #%2",
+  "hud.rows":"строк:","hud.bottom":"низ:","hud.norm":"норм:","hud.x":"X:","hud.live":"LIVE",
+  "pal.title":"Цветовая палитра",
+  "log.ws_open":"WS подключён","log.ws_closed":"WS закрыт, переподключение…",
+  "log.backfill":"backfill: %1 строк, first #%2","log.backfill_err":"backfill err: ",
+  "log.disk_write_err":"диск: write err ","log.disk_start_fsa":"диск: запись начата → %1 (потоковая)",
+  "log.disk_fsa_fail":"диск: FSA fail (%1), переключаюсь в режим ОЗУ-буфера",
+  "log.disk_start_ram":"диск: запись начата → %1 (буфер ОЗУ, скачается на «Стоп»)",
+  "log.disk_flush_err":"диск: flush err ","log.disk_done":"диск: запись завершена (%1 стр., %2 МБ) → %3",
+  "log.disk_ckpt":"диск: контрольная точка #%1 — файл зафиксирован на диске (%2 стр., %3 МБ)",
+  "log.disk_ckpt_err":"диск: ошибка контрольной точки ","log.disk_blob":"диск: blob скачан (%1 стр., %2 МБ) → %3","log.disk_close_err":"диск: close err ",
+  "log.cleared":"очищено","log.interval":"интервал = %1 с","log.export":"экспорт .n42 (ANSI N42.42)","log.export_aswf":"экспорт .aswf (ASWF v3)",
+  "confirm.clear":"Очистить накопленную спектрограмму?",
+  "unload.recording":"Идёт запись на диск. Закрыть страницу?",
+  "flash.off":"выкл","flash.full":"⚠ Flash заполнен (стрим продолжается)",
+  "state.rec":"● ЗАПИСЬ","state.stop":"○ стоп",
+  "state.total":"строк всего:","state.ring":"в кольце:",
+  "ofl.summary":"📤 Автономная выгрузка сегментов (HTTP на ваш ПК/NAS)",
+  "ofl.enabled":"Включить автоотправку завершённых сегментов",
+  "ofl.transport":"Транспорт","ofl.transport_http":"HTTP (локальная сеть)",
+  "ofl.transport_note":"HTTPS/SMB — позже (#REC-11-B)",
+  "ofl.url":"Адрес приёмника","ofl.url_ph":"http://<адрес-ПК>:8080/wf",
+  "ofl.user":"Логин","ofl.pass":"Пароль","ofl.pass_ph":"пусто = не менять",
+  "ofl.save":"Сохранить",
+  "ofl.note":"Плата сама шлёт каждый завершённый сегмент <code>.aswf</code> POST-запросом на указанный адрес. Только HTTP в локальной сети. <b>Народмон запрещён</b> — адрес с «narodmon» не примется.",
+  "ofl.st_sent":"Отправлено:","ofl.st_failed":"Ошибок:","ofl.st_last":"Код:",
+  "ofl.st_busy":"идёт отправка…","ofl.st_idle":"ожидание","ofl.st_lastok":"успех:",
+  "ofl.pass_set":"пароль сохранён","ofl.saved":"сохранено","ofl.never":"—",
+  "ofl.err_blocked":"адрес запрещён (Народмон-бан)",
+  "ofl.err_invalid":"URL должен начинаться с http://",
+  "ofl.err_nvs":"ошибка записи в NVS","ofl.err":"ошибка отправки настроек"
+ },
+ en:{
+  "title":"AtomSpectra · Waterfall","device":"Device",
+  "nav.spectrum":"Spectrum","nav.waterfall":"Waterfall","nav.saved":"Saved","nav.system":"System","nav.service":"Service",
+  "btn.start":"▶ Start","btn.stop":"■ Stop","btn.clear":"🗑 Clear","btn.export_n42":"⬇ Export .n42","btn.export_aswf":"⬇ Export .aswf",
+  "btn.disk":"💾 Stream to disk…","btn.disk_stop":"■ Stream to disk (stop)",
+  "btn.disk_title":"Save the incoming stream to an .aswf file on the PC disk",
+  "lbl.interval_s":"Interval, s","btn.apply":"apply",
+  "lbl.persist_flash":"📍 store in Flash <span style=\"color:#5b655a\">(unchecked — RAM ring only)</span>",
+  "lbl.persist_title":"Where to keep the waterfall",
+  "lbl.rec_time":"⏱ Rec time:","lbl.ring":"RAM ring","lbl.ring_title":"PSRAM ring fill — last rows",
+  "lbl.flash":"Flash","lbl.flash_title":"on-board flash usage","lbl.disk":"💾 Disk:",
+  "lbl.seg":"💾 Segments","lbl.seg_title":"Completed waterfall segments on the board Flash (unit of autonomous recording and offload)",
+  "seg.dropped":" −%1 (ring)",
+  "lbl.disk_title":"The file the stream is being written to. For privacy the browser does not reveal the folder path — only the file name is shown (you chose the folder in the «Save As» dialog).",
+  "disk.ind":"%1 · %2 rows · %3 MB · %4","disk.ram_tag":" · RAM buffer (downloads on «Stop»)",
+  "help.summary":"❓ How autonomous recording and data offload work",
+  "help.body":"<p><b>Autonomous recording.</b> Press «Start» — the board records the waterfall to Flash as segments (<code>.aswf</code>) on its own. The browser is only needed to press Start/Stop; after starting you may close the page — recording continues on the board.</p><p><b>Storage — keep-last ring.</b> Segments accumulate on Flash; when space runs out, the oldest not-yet-offloaded segment is dropped (the «−N (ring)» indicator). The latest stretch is always kept on Flash.</p><p><b>Data offload.</b> An external viewer pulls finished segments over the network (list — <code>/api/waterfall/segments</code>, file — <code>/api/waterfall/segment?name=</code>) and stitches several <code>.aswf</code> into one if needed. The live image on this page comes over WebSocket from the RAM ring and needs no Flash.</p><p><b>.n42 export</b> — a snapshot of the current RAM ring (last ~256 rows), always available.</p>",
+  "lbl.axis_x":"Axis X","opt.channels":"channels","opt.kev":"keV","lbl.brightness":"Brightness",
+  "opt.log":"log","opt.lin":"lin","lbl.contrast":"Contrast","lbl.palette":"Palette",
+  "lbl.palette_title":"Change colour palette","lbl.channels":"Channels","btn.fit_reset":"reset zoom",
+  "lbl.slice":"Spectrum slice","slc.live":"live · last row",
+  "slc.no_data":"no data","slc.wait":"waiting for data…",
+  "slc.cursor_prefix":"under cursor · #","slc.live_prefix":"live · #",
+  "slc.empty_fallback":"row #%1 is empty (0 counts) · showing live #%2",
+  "hud.rows":"rows:","hud.bottom":"bottom:","hud.norm":"norm:","hud.x":"X:","hud.live":"LIVE",
+  "pal.title":"Colour palette",
+  "log.ws_open":"WS connected","log.ws_closed":"WS closed, reconnecting…",
+  "log.backfill":"backfill: %1 rows, first #%2","log.backfill_err":"backfill err: ",
+  "log.disk_write_err":"disk: write err ","log.disk_start_fsa":"disk: recording started → %1 (streaming)",
+  "log.disk_fsa_fail":"disk: FSA fail (%1), switching to RAM-buffer mode",
+  "log.disk_start_ram":"disk: recording started → %1 (RAM buffer, downloads on «Stop»)",
+  "log.disk_flush_err":"disk: flush err ","log.disk_done":"disk: recording finished (%1 rows, %2 MB) → %3",
+  "log.disk_ckpt":"disk: checkpoint #%1 — file committed to disk (%2 rows, %3 MB)",
+  "log.disk_ckpt_err":"disk: checkpoint error ","log.disk_blob":"disk: blob downloaded (%1 rows, %2 MB) → %3","log.disk_close_err":"disk: close err ",
+  "log.cleared":"cleared","log.interval":"interval = %1 s","log.export":"export .n42 (ANSI N42.42)","log.export_aswf":"export .aswf (ASWF v3)",
+  "confirm.clear":"Clear the accumulated spectrogram?",
+  "unload.recording":"Disk recording in progress. Close the page?",
+  "flash.off":"off","flash.full":"⚠ Flash full (stream continues)",
+  "state.rec":"● REC","state.stop":"○ stop",
+  "state.total":"total rows:","state.ring":"in ring:",
+  "ofl.summary":"📤 Autonomous segment offload (HTTP to your PC/NAS)",
+  "ofl.enabled":"Auto-send finished segments",
+  "ofl.transport":"Transport","ofl.transport_http":"HTTP (local network)",
+  "ofl.transport_note":"HTTPS/SMB — later (#REC-11-B)",
+  "ofl.url":"Receiver URL","ofl.url_ph":"http://<pc-host>:8080/wf",
+  "ofl.user":"User","ofl.pass":"Password","ofl.pass_ph":"empty = keep current",
+  "ofl.save":"Save",
+  "ofl.note":"The board itself POSTs every finished <code>.aswf</code> segment to this address. HTTP on the local network only. <b>Narodmon is blocked</b> — an address containing «narodmon» is rejected.",
+  "ofl.st_sent":"Sent:","ofl.st_failed":"Failed:","ofl.st_last":"Code:",
+  "ofl.st_busy":"sending…","ofl.st_idle":"idle","ofl.st_lastok":"last ok:",
+  "ofl.pass_set":"password stored","ofl.saved":"saved","ofl.never":"—",
+  "ofl.err_blocked":"address blocked (Narodmon ban)",
+  "ofl.err_invalid":"URL must start with http://",
+  "ofl.err_nvs":"NVS write error","ofl.err":"failed to save settings"
+ }
+};
+var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
+function t(k){var d=DICT[LANG]||DICT.ru;return(d[k]!==undefined)?d[k]:(DICT.ru[k]||k);}
+function tfmt(k){var s=t(k);for(var i=1;i<arguments.length;i++)s=s.replace("%"+i,arguments[i]);return s;}
+function applyI18n(){
+ document.querySelectorAll("[data-i18n]").forEach(function(el){
+  var k=el.getAttribute("data-i18n"); el.textContent=t(k);
+ });
+ document.querySelectorAll("[data-i18n-html]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-html"); el.innerHTML=t(k);
+ });
+ document.querySelectorAll("[data-i18n-title]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-title"); el.title=t(k);
+ });
+ document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-placeholder"); el.placeholder=t(k);
+ });
+ document.documentElement.lang=LANG;
+ var btn=document.getElementById("langBtn"); if(btn)btn.textContent=(LANG==="ru")?"EN":"RU";
+}
+function setLang(l){
+ if(l!=="ru"&&l!=="en")l="ru";
+ LANG=l; try{localStorage.setItem("aswf-lang",l);}catch(e){}
+ applyI18n();
+ try{if(typeof applyRecState==="function")applyRecState();}catch(e){}   // #REC-7: «● ЗАПИСЬ»/«● REC» сразу на новом языке
+ try{if((dskWritable||dskMemChunks)&&typeof updDiskInd==="function")updDiskInd();}catch(e){}
+ try{if(typeof draw==="function")draw();}catch(e){}
+}
+
+// === 10-стоп палитры (заимствованы из mock v3) ===
+var PALETTES={
+ Inferno:{desc:"тёмная, контрастная (дефолт)",stops:[[0,0,4],[20,11,52],[58,9,99],[101,21,110],[143,36,108],[185,53,95],[222,73,74],[247,104,52],[252,143,30],[252,194,72]]},
+ Magma:{desc:"мягкая, фиолетово-розовая",stops:[[0,0,4],[18,13,49],[56,15,94],[94,23,113],[131,35,123],[166,47,129],[202,63,128],[233,86,118],[247,123,106],[252,176,134]]},
+ Plasma:{desc:"фиолет → жёлтый, без чёрного",stops:[[13,8,135],[55,5,158],[97,1,168],[131,4,167],[164,17,154],[195,38,132],[221,69,103],[239,103,73],[247,150,40],[239,205,40]]},
+ Viridis:{desc:"перцептивная, друг-к-другу слепых",stops:[[68,1,84],[71,28,113],[63,55,128],[55,82,131],[43,108,128],[35,135,120],[40,159,106],[81,182,86],[150,200,60],[230,210,50]]},
+ Cividis:{desc:"для дальтоников, синь→жёлт",stops:[[0,32,77],[0,50,103],[19,68,121],[51,86,127],[81,103,127],[112,121,126],[145,140,124],[181,160,115],[219,182,98],[253,206,73]]},
+ Turbo:{desc:"яркая, плавный синий→красн",stops:[[48,18,59],[64,69,196],[57,141,247],[42,205,202],[81,242,115],[173,246,55],[244,209,46],[253,143,46],[223,75,41],[122,4,3]]},
+ Jet:{desc:"классика matlab",stops:[[0,0,131],[0,60,170],[5,255,255],[5,255,135],[120,255,5],[255,255,0],[255,170,0],[255,80,0],[225,0,0],[128,0,0]]},
+ Hot:{desc:"чёрный→красн→жёлт→белый",stops:[[0,0,0],[64,0,0],[128,0,0],[192,0,0],[255,32,0],[255,96,0],[255,160,0],[255,224,0],[255,255,128],[255,255,255]]},
+ Ocean:{desc:"чёрный→синий→белый, спокойная",stops:[[0,0,0],[0,16,40],[0,32,80],[0,56,120],[0,90,160],[20,130,200],[60,170,225],[120,205,235],[190,225,240],[245,250,252]]},
+ Parula:{desc:"matlab по умолчанию, синь→жёлт",stops:[[53,42,135],[15,92,189],[18,119,200],[21,143,179],[45,162,151],[100,176,116],[166,183,76],[225,184,60],[251,213,44],[249,251,20]]},
+ Cubehelix:{desc:"яркость растёт, ч/б-совместима",stops:[[0,0,0],[22,11,40],[18,45,78],[20,84,80],[50,110,52],[114,118,43],[181,122,78],[221,141,158],[223,182,219],[240,235,250]]},
+ Spectral:{desc:"диверг., синий↔жёлт↔красн",stops:[[94,79,162],[50,136,189],[102,194,165],[171,221,164],[230,245,152],[255,255,191],[254,224,139],[253,174,97],[244,109,67],[213,62,79]]},
+ Cool:{desc:"голубой→пурпурный, яркая",stops:[[0,255,255],[28,227,255],[57,198,255],[85,170,255],[113,142,255],[142,113,255],[170,85,255],[198,57,255],[227,28,255],[255,0,255]]},
+ Grayscale:{desc:"моно, для печати",stops:[[0,0,0],[28,28,28],[56,56,56],[84,84,84],[112,112,112],[140,140,140],[168,168,168],[196,196,196],[224,224,224],[255,255,255]]}
+};
+var currentPalette="Inferno", currentLut=null;
+
+function buildLut(name){
+ var stops=PALETTES[name].stops, N=256;
+ var lut=new Uint8Array(N*3);
+ for(var i=0;i<N;i++){
+  var t=i/(N-1);
+  var f=t*(stops.length-1), si=Math.floor(f), g=f-si;
+  if(si>=stops.length-1)si=stops.length-2,g=1;
+  var a=stops[si],b=stops[si+1];
+  lut[i*3]  =(a[0]+(b[0]-a[0])*g)|0;
+  lut[i*3+1]=(a[1]+(b[1]-a[1])*g)|0;
+  lut[i*3+2]=(a[2]+(b[2]-a[2])*g)|0;
+ }
+ return lut;
+}
+function applyPalette(name){
+ currentPalette=name; currentLut=buildLut(name);
+ document.getElementById("palName").textContent=name;
+ // мини-градиент в селекторе
+ var sw=document.getElementById("palSw");
+ var stops=PALETTES[name].stops;
+ var grad=stops.map(function(s,i){return"rgb("+s[0]+","+s[1]+","+s[2]+") "+(i/(stops.length-1)*100).toFixed(0)+"%"}).join(",");
+ sw.style.background="linear-gradient(90deg,"+grad+")";
+ try{localStorage.setItem("aswf-pal",name);}catch(e){}
+ draw();
+}
+function openPalette(){
+ var list=document.getElementById("palList"); list.innerHTML="";
+ Object.keys(PALETTES).forEach(function(name){
+  var p=PALETTES[name];
+  var grad=p.stops.map(function(s,i){return"rgb("+s[0]+","+s[1]+","+s[2]+") "+(i/(p.stops.length-1)*100).toFixed(0)+"%"}).join(",");
+  var li=document.createElement("li");
+  if(name===currentPalette)li.className="on";
+  li.innerHTML='<div class="swatch" style="background:linear-gradient(90deg,'+grad+')"></div>'+
+   '<div><div class="nm">'+name+'</div><div class="desc">'+p.desc+'</div></div>';
+  li.onclick=function(){applyPalette(name);closePalette();};
+  list.appendChild(li);
+ });
+ document.getElementById("palMod").classList.add("on");
+}
+function closePalette(){document.getElementById("palMod").classList.remove("on");}
+document.getElementById("palMod").addEventListener("click",function(e){if(e.target===this)closePalette();});
+
+// ============== JS-плумбинг — БЕЗ ИЗМЕНЕНИЙ ==============
+var CH=8192;
+var WFW=900, WFH=520;
+var MAXROWS=2048;
+var rows=[];
+var baseIndex=0;
+var calib=null, serial="", intervalSec=5, startedAt=0;
+var viewBottom=-1;
+var chLo=0, chHi=CH;
+var gain=40, scaleMode="log", axisMode="ch";
+var ws=null, wsTimer=null, recording=false;
+var wfStat=null;
+var dskWritable=null;
+var dskRows=0, dskStart=0, dskName="", dskBytes=0;
+var dskHdrReserve=4096;
+var dskFlushTimer=null;
+var dskMemChunks=null;
+var dskQueue=Promise.resolve();   // сериализатор записи: ни одного конкурентного write() в поток
+var dskDataPos=0;                 // текущий байтовый офсет данных (явная позиция вместо неявного курсора)
+var dskStopping=false;            // реентранси-гард для stopDiskStream
+var dskWriteErrs=0;               // #REC-8: счётчик сбоев записи (для индикатора)
+var dskWakeLock=null;             // #REC-8: Wake Lock — не давать ПК/вкладке уснуть при долгом стриме
+var dskHandle=null;               // #REC-9: FileSystemFileHandle — нужен для переоткрытия файла на контрольной точке
+var dskCkptTimer=null;            // #REC-9: таймер контрольной точки (close→reopen)
+var dskCkptN=0;                   // #REC-9: счётчик выполненных контрольных точек
+var dskCkptMs=15*60*1000;         // #REC-9: период контрольной точки — 15 минут
+// #REC-8: устойчивая запись блока с ретраями. Раньше ЛЮБОЙ reject одного write()
+// в dskEnqueue.catch вызывал stopDiskStream() и убивал весь стрим — транзиентный
+// сбой (троттлинг вкладки / сон ПК за часы автономной записи) обрывал многосуточную
+// запись. Теперь сбой ретраится на ТОЙ ЖЕ позиции (без дыры в файле), а стрим не падает.
+function dskWrite(pos,data,tries){
+ if(tries===undefined)tries=5;
+ return dskWritable.write({type:"write",position:pos,data:data})
+  .catch(function(e){
+   if(tries>0&&dskWritable){
+    dskWriteErrs++;
+    return new Promise(function(r){setTimeout(r,400);})
+     .then(function(){if(!dskWritable)return;return dskWrite(pos,data,tries-1);});
+   }
+   throw e;
+  });
+}
+function dskEnqueue(fn){
+ dskQueue=dskQueue.then(function(){if(!dskWritable)return;return fn();})
+  .catch(function(e){dskWriteErrs++;lg(t("log.disk_write_err")+e);});   // #REC-8: НЕ останавливаем стрим — только лог
+ return dskQueue;
+}
+var wf=document.getElementById("wf"), wfx=wf.getContext("2d");
+var cur=document.getElementById("cur"), curx=cur.getContext("2d");
+var slc=document.getElementById("slc"), slcx=slc.getContext("2d");
+var SLW=900, SLH=180;
+(function(){var dpr=Math.max(2,window.devicePixelRatio||1);/* #UI-18: supersample ≥2× → срез/курсор в zoom-оверлее чёткие */function hidpi(c,ctx,w,h){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}hidpi(cur,curx,WFW,WFH);hidpi(slc,slcx,SLW,SLH);})();
+// #UI-4: битмап канваса ВСЕГДА 520 строк (WFHd≡WFH). Попытка ужимать битмап под
+// число строк (fitWFHeight) ломала layout: #wf height:auto схлопывался в полоску,
+// а #cur height:100% прибит к высоте ряда (её держит вертикальный скроллбар) →
+// оверлей с осями растягивался ×10 = гигантский текст. Поэтому bitmap фиксирован,
+// а «чёрное поле сверху при движении слайдера» решается clamp-ом прокрутки (ниже,
+// syncScroll/слайдер/alt+wheel: bottom никогда не уходит выше lastIdx).
+var WFHd=WFH;
+function fitWFHeight(){ /* no-op: bitmap фиксирован 900×520, см. комментарий выше (#UI-4) */ }
+var slcMode="log", slcHoverLi=-1, slcCursorCh=-1, cursorY=-1;
+// #UI-16: true ⇔ курсор ВНУТРИ canvas, но строка под ним вне rows[] (чёрная зона
+// выше первой/ниже последней строки). Тогда срез ДОЛЖЕН показать «нет данных»,
+// а НЕ откатываться на live (тот fallback из #UI-13 — только для пустых
+// внутрибуферных строк).
+var slcCursorInDark=false;
+
+function lg(m){var d=document.getElementById("log");var t=new Date().toLocaleTimeString();
+ d.textContent+="["+t+"] "+m+"\n";d.scrollTop=d.scrollHeight}
+
+function cmap(t){
+ if(t<0)t=0; if(t>1)t=1;
+ var i=Math.min(255,Math.floor(t*256));
+ var o=i*3;
+ return [currentLut[o],currentLut[o+1],currentLut[o+2]];
+}
+function ch2kev(c){if(!calib)return c;var e=0;for(var i=0;i<calib.length;i++)e+=calib[i]*Math.pow(c,i);return e}
+function kev2ch(k){var lo=0,hi=CH;for(var i=0;i<30;i++){var m=(lo+hi)/2;if(ch2kev(m)<k)lo=m;else hi=m}return(lo+hi)/2}
+
+/* #DEMO-12: выбранные линии нуклидов — те же, что на «Спектре» (index.html).
+   Выбор хранится в общем localStorage["aswf-nuc"]; здесь только читаем и рисуем
+   их вертикальными маркерами на спектрограмме (через canvas cur) и на срезе. */
+var NUCLIDES=[
+ {id:"k40",   name:"K-40",   color:"#f0c45a", lines:[1460.8]},
+ {id:"cs137", name:"Cs-137", color:"#ff8a82", lines:[661.7]},
+ {id:"co60",  name:"Co-60",  color:"#7ed4ff", lines:[1173.2,1332.5]},
+ {id:"ra226", name:"Ra-226", color:"#ff9a55", lines:[186.2,242.0,295.2,351.9,609.3,1120.3,1764.5]},
+ {id:"th232", name:"Th-232", color:"#9ad17a", lines:[238.6,338.3,583.2,911.2,968.9,2614.5]},
+ {id:"am241", name:"Am-241", color:"#ff6ec0", lines:[59.5]},
+ {id:"na22",  name:"Na-22",  color:"#6ea8ff", lines:[511.0,1274.5]},
+ {id:"i131",  name:"I-131",  color:"#5fe7c3", lines:[364.5]},
+ {id:"mn54",  name:"Mn-54",  color:"#d0d36a", lines:[834.8]},
+ {id:"ann",   name:"e⁺/e⁻ 511", color:"#8a9686", lines:[511.0]}
+];
+var nucShow=(function(){
+ try{var raw=localStorage.getItem("aswf-nuc");if(raw){var o=JSON.parse(raw);if(o&&typeof o==="object")return o;}}catch(e){}
+ return {k40:true,cs137:true,co60:true};
+})();
+function nucAny(){for(var k in nucShow){if(nucShow[k])return true;}return false;}
+
+var normMax=64;
+function rowMax(r){var m=0;for(var i=chLo;i<chHi&&i<r.length;i++){if(r[i]>m)m=r[i];}return m;}
+
+function draw(){
+ fitWFHeight();   // #UI-4: подогнать высоту канваса под число строк
+ var img=wfx.createImageData(WFW,WFHd);
+ var data=img.data;
+ var span=chHi-chLo; if(span<1)span=1;
+ var lastIdx=baseIndex+rows.length-1;
+ var bottom=(viewBottom<0)?lastIdx:viewBottom;
+ var seenMax=1;
+ for(var y=0;y<WFHd;y++){
+  var gIdx=bottom-y;
+  var li=gIdx-baseIndex;
+  if(li<0||li>=rows.length)continue;
+  var rm=rowMax(rows[li]); if(rm>seenMax)seenMax=rm;
+ }
+ normMax=normMax*0.7+seenMax*0.3; if(normMax<1)normMax=1;
+ var gfac=gain/40.0;
+ for(var y=0;y<WFHd;y++){
+  var gIdx=bottom-y;
+  var li=gIdx-baseIndex;
+  var off=y*WFW*4;
+  if(li<0||li>=rows.length){
+   for(var x=0;x<WFW;x++){var o=off+x*4;data[o]=8;data[o+1]=10;data[o+2]=8;data[o+3]=255;}
+   continue;
+  }
+  var row=rows[li];
+  for(var x=0;x<WFW;x++){
+   var c=chLo+Math.floor(x/WFW*span);
+   var v=(c>=0&&c<row.length)?row[c]:0;
+   var t;
+   if(scaleMode==="log"){t=Math.log1p(v*gfac)/Math.log1p(normMax);}
+   else{t=(v*gfac)/normMax;}
+   var col=cmap(t);
+   var o=off+x*4;
+   data[o]=col[0]|0;data[o+1]=col[1]|0;data[o+2]=col[2]|0;data[o+3]=255;
+  }
+ }
+ wfx.putImageData(img,0,0);
+ drawAxis();
+ drawNuclidesWF();
+ drawCursor();
+ updHud(bottom,lastIdx);
+ drawSlice();
+ syncScroll();
+}
+/* #DEMO-12: вертикальные маркеры выбранных нуклидов на спектрограмме.
+   Рисуем в canvas cur (тот же, что оси/курсор) — оверлей берёт его через
+   compose(wfEl,curEl), поэтому линии видны и в обычном виде, и в zoom-оверлее.
+   Координата X канала c: (c-chLo)/span*WFW (та же, что у баров среза). */
+function drawNuclidesWF(){
+ if(!calib||!nucAny())return;
+ var span=chHi-chLo; if(span<1)span=1;
+ curx.save();
+ curx.textAlign="left"; curx.textBaseline="top"; curx.font="9px ui-monospace,monospace";
+ for(var i=0;i<NUCLIDES.length;i++){
+  var n=NUCLIDES[i]; if(!nucShow[n.id])continue;
+  for(var j=0;j<n.lines.length;j++){
+   var c=kev2ch(n.lines[j]);
+   if(c<chLo||c>=chHi)continue;
+   var x=Math.round((c-chLo)/span*WFW)+0.5;
+   curx.strokeStyle=n.color; curx.lineWidth=1; curx.globalAlpha=0.8; curx.setLineDash([4,3]);
+   curx.beginPath(); curx.moveTo(x,0); curx.lineTo(x,WFHd-16); curx.stroke();
+   curx.setLineDash([]); curx.globalAlpha=0.95;
+   var ly=2+((i%3)*10);
+   curx.fillStyle="rgba(0,0,0,.55)";
+   var lw=curx.measureText(n.name).width+4;
+   var lx=x+2; if(lx+lw>WFW)lx=x-lw-2;
+   curx.fillRect(lx,ly,lw,10);
+   curx.fillStyle=n.color; curx.fillText(n.name,lx+2,ly+1);
+   curx.globalAlpha=1;
+  }
+ }
+ curx.restore();
+}
+/* #DEMO-3/#DEMO-5: видимая полоса прокрутки истории спектрограммы.
+   value=0 → live (новейшая строка), value=max → самая старая строка. */
+function syncScroll(){
+ var sb=document.getElementById("wf-scroll");
+ if(!sb)return;
+ var lastIdx=baseIndex+rows.length-1;
+ var mx=Math.max(0,rows.length-Math.min(WFH,rows.length));   // #UI-4: окно прокрутки = WFHd (min(WFH,строк)), не WFH → при <520 строк mx=0, слайдер выключен
+ if(parseInt(sb.max)!==mx)sb.max=mx;
+ sb.disabled=(mx<=0);
+ if(document.activeElement===sb)return;
+ var bottom=(viewBottom<0)?lastIdx:viewBottom;
+ var v=lastIdx-bottom; if(v<0)v=0; if(v>mx)v=mx;
+ if(parseInt(sb.value)!==v)sb.value=v;
+}
+
+function drawCursor(){
+ if(cursorY<0||slcCursorCh<0)return;
+ var span=chHi-chLo; if(span<1)span=1;
+ if(slcCursorCh<chLo||slcCursorCh>=chHi)return;
+ var x=Math.round((slcCursorCh-chLo)/span*WFW);
+ var y=cursorY|0;
+ curx.strokeStyle="rgba(255,255,255,.55)"; curx.lineWidth=1;
+ curx.beginPath();
+ curx.moveTo(x+0.5,0); curx.lineTo(x+0.5,WFHd);
+ curx.moveTo(0,y+0.5); curx.lineTo(WFW,y+0.5);
+ curx.stroke();
+ var lastIdx=baseIndex+rows.length-1;
+ var bottom=(viewBottom<0)?lastIdx:viewBottom;
+ var li=(bottom-y)-baseIndex;
+ var v=(li>=0&&li<rows.length&&slcCursorCh<rows[li].length)?rows[li][slcCursorCh]:0;
+ var ke=calib?(" / "+ch2kev(slcCursorCh).toFixed(1)+" "+t("opt.kev")):"";
+ var lbl="ch "+slcCursorCh+ke+" : "+v;
+ curx.font="11px ui-monospace,monospace";
+ var tw=curx.measureText(lbl).width+10;
+ var tx=x+8; if(tx+tw>WFW-4)tx=x-tw-8;
+ var ty=y-2; if(ty<14)ty=y+14;
+ curx.fillStyle="rgba(0,0,0,.7)"; curx.fillRect(tx,ty-12,tw,14);
+ curx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';
+ curx.textAlign="left"; curx.fillText(lbl,tx+5,ty);
+}
+
+function drawSlice(){
+ slcx.fillStyle="#000"; slcx.fillRect(0,0,SLW,SLH);
+ // #UI-13 fix: «инверсный» симптом «срез пропадает при hover» был из-за того,
+ // что при hover на пустую (свежую/незаполненную backfill) строку drawSlice
+ // упирался в _rowEmpty → no_data. Новая стратегия:
+ // 1. hover-строка непустая → рисуем её (как раньше)
+ // 2. hover-строка пустая → ОТКАТ НА liLive (последнюю), а не на соседей —
+ //    свежая live-строка почти всегда содержит данные, и срез не «пропадает».
+ // 3. live-строка тоже пустая (старт, до первого WS-кадра) → ищем последнюю
+ //    ненулевую снизу. И только если её НЕТ — слово «нет данных».
+ var liReq=(slcHoverLi>=0&&slcHoverLi<rows.length)?slcHoverLi:-1;
+ var liLive=rows.length-1;
+ var info=document.getElementById("slcInfo");
+ var span=chHi-chLo; if(span<1)span=1;
+ // #UI-16: курсор над «чёрной зоной» canvas (нет строки под ним) → срез
+ // НЕ выводим (даже live); fallback из #UI-13 только для пустых
+ // внутрибуферных строк, не для тёмного поля.
+ if(slcCursorInDark){
+  info.textContent=t("slc.no_data");
+  slcx.fillStyle="#3a4438"; slcx.font="11px ui-monospace,monospace"; slcx.textAlign="center";
+  slcx.fillText(t("slc.wait"),SLW/2,SLH/2);
+  return;
+ }
+ function _rowEmpty(r){ if(!r||r.length===0)return true; for(var jj=chLo;jj<chHi&&jj<r.length;jj++){ if(r[jj]>0)return false; } return true; }
+ var li=(liReq>=0)?liReq:liLive;
+ var row=(li>=0&&li<rows.length)?rows[li]:null;
+ var emptyRow=_rowEmpty(row);
+ var liFallback=-1, emptyFallback=false;
+ if(emptyRow){
+  // приоритетный fallback — last-known-good живая строка
+  if(liReq>=0 && liLive>=0 && liLive!==liReq && !_rowEmpty(rows[liLive])){
+   liFallback=liLive;
+  } else {
+   for(var kk=rows.length-1;kk>=0;kk--){ if(!_rowEmpty(rows[kk])){ liFallback=kk; break; } }
+  }
+  if(liFallback>=0){ row=rows[liFallback]; emptyRow=false; emptyFallback=(liReq>=0); }
+ }
+ if(emptyRow||!row){
+  info.textContent=t("slc.no_data");
+  slcx.fillStyle="#3a4438"; slcx.font="11px ui-monospace,monospace"; slcx.textAlign="center";
+  slcx.fillText(t("slc.wait"),SLW/2,SLH/2);
+  return;
+ }
+ var mx=1;
+ for(var i=chLo;i<chHi&&i<row.length;i++){ if(row[i]>mx)mx=row[i]; }
+ // сетка
+ slcx.strokeStyle="#161b14"; slcx.lineWidth=1;
+ for(var g=1;g<=4;g++){
+  var gy=Math.round(SLH*g/5)+0.5;
+  slcx.beginPath(); slcx.moveTo(0,gy); slcx.lineTo(SLW,gy); slcx.stroke();
+ }
+ // #UI-17: столбчатая диаграмма вместо ломаной линии.
+ // bw — оптимальная ширина столбца: 1 px при span>SLW, иначе floor(SLW/span).
+ // step — каналов на столбец; в столбце берём max по каналам, попавшим в band
+ // (peak-preserving, чтобы узкие пики не «съедались» децимацией).
+ var accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';
+ var denom=(slcMode==="log")?Math.log1p(mx):mx;
+ if(denom<1)denom=1;
+ var bw=Math.max(1, Math.floor(SLW/span));
+ var nbars=Math.max(1, Math.floor(SLW/bw));
+ var step=span/nbars;
+ var gap=(bw>=3)?1:0;            // зазор 1 px между столбцами при bw≥3
+ var bwDraw=bw-gap;
+ var hoverK=-1;
+ if(slcCursorCh>=chLo&&slcCursorCh<chHi){
+  hoverK=Math.floor((slcCursorCh-chLo)/step);
+  if(hoverK<0)hoverK=0; if(hoverK>=nbars)hoverK=nbars-1;
+ }
+ slcx.fillStyle=accent;
+ for(var k=0;k<nbars;k++){
+  var cLo=Math.floor(chLo+k*step);
+  var cHi=Math.ceil(chLo+(k+1)*step);
+  if(cHi<=cLo)cHi=cLo+1;
+  var v=0;
+  for(var c=cLo;c<cHi&&c<row.length;c++){ if(c<0)continue; if(row[c]>v)v=row[c]; }
+  var ti=(slcMode==="log")?(Math.log1p(v)/denom):(v/denom);
+  if(!isFinite(ti))ti=0; if(ti<0)ti=0; if(ti>1)ti=1;
+  var h=ti*(SLH-12);
+  if(h<1&&v>0)h=1;              // не теряем единичные отсчёты в lin-режиме
+  var by=SLH-4-h;
+  if(k===hoverK){
+   // подсветка столбца под курсором (рамка + тот же fill)
+   slcx.fillStyle="rgba(255,255,255,.18)";
+   slcx.fillRect(k*bw, 0, bwDraw>0?bwDraw:bw, SLH);
+   slcx.fillStyle=accent;
+  }
+  slcx.fillRect(k*bw, by, bwDraw>0?bwDraw:bw, h);
+ }
+ // #DEMO-12: вертикальные маркеры выбранных нуклидов на срезе (та же X-шкала каналов)
+ if(calib&&nucAny()){
+  for(var ni=0;ni<NUCLIDES.length;ni++){
+   var nn=NUCLIDES[ni]; if(!nucShow[nn.id])continue;
+   for(var nj=0;nj<nn.lines.length;nj++){
+    var nc=kev2ch(nn.lines[nj]);
+    if(nc<chLo||nc>=chHi)continue;
+    var nx=Math.round((nc-chLo)/span*SLW)+0.5;
+    slcx.strokeStyle=nn.color; slcx.lineWidth=1; slcx.globalAlpha=0.8; slcx.setLineDash([4,3]);
+    slcx.beginPath(); slcx.moveTo(nx,0); slcx.lineTo(nx,SLH); slcx.stroke();
+   }
+  }
+  slcx.setLineDash([]); slcx.globalAlpha=1;
+ }
+ // подпись курсора (ch / кэВ / counts) — поверх столбцов
+ if(slcCursorCh>=chLo&&slcCursorCh<chHi){
+  var cc=slcCursorCh|0;
+  if(cc>=0&&cc<row.length){
+   var vv=row[cc]||0;
+   var lbl="ch "+cc+(calib?(" · "+ch2kev(cc).toFixed(1)+" "+t("opt.kev")):"")+" : "+vv;
+   slcx.font="11px ui-monospace,monospace";
+   var tw=slcx.measureText(lbl).width+10;
+   var hx=(hoverK>=0)?hoverK*bw+Math.floor((bwDraw>0?bwDraw:bw)/2):Math.round((slcCursorCh-chLo)/span*SLW);
+   var tx=hx+8; if(tx+tw>SLW-4)tx=hx-tw-8;
+   slcx.fillStyle="rgba(0,0,0,.7)"; slcx.fillRect(tx,4,tw,16);
+   slcx.fillStyle=accent; slcx.textAlign="left"; slcx.fillText(lbl,tx+5,16);
+  }
+ }
+ // подписи
+ var tail;
+ if(emptyFallback){
+  tail=tfmt("slc.empty_fallback", baseIndex+liReq, baseIndex+liFallback);
+ } else if(liReq>=0){
+  tail=t("slc.cursor_prefix")+(baseIndex+liReq);
+ } else {
+  tail=t("slc.live_prefix")+(baseIndex+li);
+ }
+ info.textContent=tail+"  ·  max="+mx;
+ slcx.fillStyle="#6b756a"; slcx.font="10px ui-monospace,monospace"; slcx.textAlign="left";
+ slcx.fillText("max "+mx,6,12);
+ slcx.textAlign="right"; slcx.fillText(slcMode==="log"?"log Y":"lin Y",SLW-6,12);
+}
+
+function drawAxis(){
+ curx.clearRect(0,0,WFW,WFHd);
+ curx.fillStyle="rgba(0,0,0,.55)";curx.fillRect(0,WFHd-16,WFW,16);
+ curx.strokeStyle="#283024";curx.fillStyle="#aeb6a8";curx.font="10px ui-monospace,monospace";curx.textAlign="center";
+ var span=chHi-chLo;
+ var N=8;
+ for(var i=0;i<=N;i++){
+  var x=i/N*WFW;
+  var ch=chLo+span*i/N;
+  var lbl=axisMode==="kev"&&calib?ch2kev(ch).toFixed(0)+"k":Math.round(ch);
+  curx.beginPath();curx.moveTo(x,WFHd-16);curx.lineTo(x,WFHd-12);curx.stroke();
+  var tx=x; if(i===0)tx+=12; if(i===N)tx-=12;
+  curx.fillText(lbl,tx,WFHd-4);
+ }
+}
+
+function updHud(bottom,lastIdx){
+ var behind=lastIdx-bottom;
+ var total=rows.length;
+ var tail=(viewBottom<0)?t("hud.live"):("−"+behind);
+ document.getElementById("hud").textContent=
+  t("hud.rows")+" "+total+"   "+t("hud.bottom")+" #"+(bottom<0?0:bottom)+" ["+tail+"]\n"+
+  t("hud.norm")+" "+Math.round(normMax)+"   "+t("hud.x")+" "+chLo+"…"+chHi;
+}
+
+wf.parentNode.addEventListener("mousemove",function(e){
+ var rc=wf.getBoundingClientRect();
+ var sx=WFW/rc.width, sy=WFHd/rc.height;
+ var x=(e.clientX-rc.left)*sx, y=(e.clientY-rc.top)*sy;
+ if(x<0||x>=WFW||y<0||y>=WFHd){
+  if(slcHoverLi>=0||slcCursorCh>=0||cursorY>=0||slcCursorInDark){slcHoverLi=-1;slcCursorCh=-1;cursorY=-1;slcCursorInDark=false;draw();}
+  return;
+ }
+ var span=chHi-chLo; var c=chLo+Math.floor(x/WFW*span);
+ var lastIdx=baseIndex+rows.length-1;
+ var bottom=(viewBottom<0)?lastIdx:viewBottom;
+ // #UI-16: Math.floor чтобы li был целым (без него slcHoverLi=3.355934... →
+ // rows[3.355]=undefined → drawSlice уходил в fallback и показывал live).
+ var li=Math.floor(bottom-Math.floor(y))-baseIndex;
+ var inWf=(li>=0&&li<rows.length);
+ slcHoverLi=inWf?li:-1;
+ slcCursorInDark=!inWf;   // курсор внутри canvas, но строки под ним нет
+ slcCursorCh=c;
+ cursorY=y;
+ draw();
+});
+wf.parentNode.addEventListener("mouseleave",function(){slcHoverLi=-1;slcCursorCh=-1;cursorY=-1;slcCursorInDark=false;draw();});
+
+function pushRow(u16){
+ rows.push(u16);
+ if(rows.length>MAXROWS){rows.shift();baseIndex++;}
+}
+function clearRows(){rows=[];baseIndex=0;viewBottom=-1;normMax=64;}
+
+async function backfill(){
+ try{
+  var ab=await(await fetch("/api/waterfall/window")).arrayBuffer();
+  if(ab.byteLength<20)return;
+  var dv=new DataView(ab);
+  var mg=String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3));
+  if(mg!=="ASWW")return;
+  var ch=dv.getUint32(4,true), nr=dv.getUint32(8,true), first=dv.getUint32(12,true);
+  intervalSec=dv.getUint32(16,true)||intervalSec;
+  CH=ch; chHiClamp();
+  clearRows(); baseIndex=first;
+  var base=20;
+  for(var i=0;i<nr;i++){
+   rows.push(new Uint16Array(ab.slice(base+i*ch*2, base+(i+1)*ch*2)));
+  }
+  lg(tfmt("log.backfill",nr,first));
+  draw();
+ }catch(e){lg(t("log.backfill_err")+e);}
+}
+
+function connectWS(){
+ var proto=location.protocol==="https:"?"wss:":"ws:";
+ ws=new WebSocket(proto+"//"+location.host+"/ws/waterfall");
+ ws.binaryType="arraybuffer";
+ ws.onopen=function(){lg(t("log.ws_open"));};   // #REC-7: WS-onopen не трогает #state (это индикатор записи)
+ ws.onmessage=function(ev){
+  if(typeof ev.data==="string"){
+   try{var h=JSON.parse(ev.data);if(h.channels){CH=h.channels;chHiClamp();}if(h.interval_sec)intervalSec=h.interval_sec;
+    if(h.calibration&&h.calibration.length){calib=h.calibration;drawAxis();}if(h.serial){serial=h.serial;document.getElementById("device-chip").textContent=h.serial;}}catch(e){}
+   return;
+  }
+  var u16=new Uint16Array(ev.data);
+  if(u16.length!==CH&&u16.length>0)CH=u16.length;
+  pushRow(u16);
+  if(dskWritable){
+   var dbuf=new Uint8Array(ev.data), dpos=dskDataPos;
+   dskDataPos+=dbuf.byteLength; dskRows++; dskBytes+=dbuf.byteLength;
+   dskEnqueue(function(){return dskWrite(dpos,dbuf);});   // #REC-8: запись с ретраями (на той же позиции)
+   updDiskInd();
+  }else if(dskMemChunks){
+   dskMemChunks.push(new Uint8Array(ev.data));
+   dskRows++; dskBytes+=ev.data.byteLength;
+   updDiskInd();
+  }
+  draw();
+ };
+ ws.onclose=function(){lg(t("log.ws_closed"));   // #REC-7: WS-onclose не трогает #state (это индикатор записи)
+  clearTimeout(wsTimer);wsTimer=setTimeout(connectWS,2000);};
+ ws.onerror=function(){try{ws.close();}catch(e){}};
+}
+
+function chHiClamp(){
+ if(chHi>CH)chHi=CH; if(chLo<0)chLo=0; if(chLo>=chHi)chLo=Math.max(0,chHi-1);
+ document.getElementById("chHi").max=CH;document.getElementById("chLo").max=CH-1;
+}
+
+// #REC-7: #state — ТОЛЬКО индикатор записи. Строка #indic висит всегда; «● ЗАПИСЬ»
+// подсвечивается красным при записи, «○ стоп» — нейтрально-серый в покое. WS-события
+// (onopen/onclose) больше не трогают #state, иначе после F5 подключение WS затирало
+// красную подсветку записи (выглядело как «надпись пропала»).
+function applyRecState(){
+ var st=document.getElementById("state"); if(!st)return;
+ st.textContent=recording?t("state.rec"):t("state.stop");
+ st.className=recording?"rec":"st";
+}
+
+async function refreshStatus(){
+ try{
+  var s=await(await fetch("/api/waterfall/status")).json();
+  recording=s.recording;intervalSec=s.interval_sec;startedAt=s.started_at;
+  var ivEl=document.getElementById("iv"); if(document.activeElement!==ivEl)ivEl.value=s.interval_sec;
+  document.getElementById("persist").checked=!!s.persist;
+  applyRecState();
+  var fs=document.getElementById("flashst");
+  fs.textContent=s.flash_full?t("flash.full"):"";
+  fs.className=s.flash_full?"err":"st";
+  document.getElementById("bStart").disabled=s.recording;
+  document.getElementById("bStop").disabled=!s.recording;
+  wfStat=s;
+  // #FW-21: «Время записи» = elapsed_sec с платы (монотонные часы, не зависит от
+  // NTP/started_at). Клиент лишь запоминает свежее число + метку Date.now() для
+  // плавного секундного тика между поллами. F5 НЕ сбрасывает: значение живёт на
+  // плате — первый же refreshStatus после перезагрузки даёт корректную длительность.
+  if(s.recording && s.elapsed_sec!==undefined){
+   elapsedBase=(s.elapsed_sec||0); elapsedAtMs=Date.now();
+  }else{ elapsedBase=-1; }
+  var rc=s.ring_capacity||1, rn=s.ring_count||0;
+  var rpct=Math.min(100,rn/rc*100);
+  document.getElementById("ringtxt").textContent=rn+"/"+rc;
+  var rfi=document.getElementById("ringfi");
+  rfi.style.width=rpct.toFixed(1)+"%";
+  rfi.style.background=rpct>=100?"#f0c45a":"var(--accent)";
+  var fw=document.getElementById("flashwrap");
+  if(!s.persist){
+   fw.style.opacity=".45";
+   document.getElementById("flashtxt").textContent=t("flash.off");
+   document.getElementById("flashfi").style.width="0%";
+  }else{
+   fw.style.opacity="1";
+  }
+  // #REC-11-A1: сегменты на Flash (автономная запись). seg_dropped>0 — кольцо
+  // keep-last затёрло старейшие отрезки (Flash был полон).
+  document.getElementById("segtxt").textContent=(s.seg_count||0);
+  var sd=document.getElementById("segdrop");
+  if(s.seg_dropped>0){sd.style.display="";sd.textContent=t("seg.dropped").replace("%1",s.seg_dropped);}
+  else{sd.style.display="none";}
+  tickRecTime();
+ }catch(e){}
+}
+
+function fmtHMS(s){s=Math.max(0,Math.floor(s));
+ var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+ function p(n){return(n<10?"0":"")+n;}return p(h)+":"+p(m)+":"+p(x);}
+// #FW-21: elapsedBase = последнее elapsed_sec с платы, elapsedAtMs = когда получено.
+// Тик = elapsedBase + прошедшее с момента получения → плавный ход между поллами.
+// -1 = не пишем / плата не отдала elapsed_sec (старая прошивка — fallback ниже).
+var elapsedAtMs=0, elapsedBase=-1;
+function recElapsed(){
+ if(!wfStat)return 0;
+ if(!wfStat.recording)return (wfStat.total_rows||0)*(wfStat.interval_sec||intervalSec);
+ if(elapsedBase>=0)return elapsedBase+(Date.now()-elapsedAtMs)/1000;   // плата elapsed_sec + плавный тик
+ // fallback (прошивка без elapsed_sec): NTP-время если валидно, иначе «--:--:--».
+ if(wfStat.started_at>1600000000)return Math.max(0,Date.now()/1000-wfStat.started_at);
+ return -1;
+}
+function tickRecTime(){
+ var el=document.getElementById("rectime"); if(!el)return;
+ var e=recElapsed();
+ el.textContent=(e<0)?"--:--:--":fmtHMS(e);
+ el.style.color=(wfStat&&wfStat.recording)?"var(--accent)":"#f0c45a";
+}
+
+async function refreshSystem(){
+ if(!wfStat||!wfStat.persist)return;
+ try{var d=await(await fetch("/api/system")).json();
+  var t=d.flash_total||0,u=d.flash_used||0;
+  var pct=t>0?(u/t*100):0;
+  document.getElementById("flashtxt").textContent=
+   (u/1024).toFixed(0)+"/"+(t/1024).toFixed(0)+" КБ ("+pct.toFixed(0)+"%)";
+  var fi=document.getElementById("flashfi");
+  fi.style.width=pct.toFixed(1)+"%";
+  fi.style.background=pct>90?"#ff8a82":pct>70?"#f0c45a":"var(--accent)";
+ }catch(e){}
+}
+
+function dskTs(){var d=new Date();function p(n){return(n<10?"0":"")+n;}
+ return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"_"+
+        p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());}
+function padJson(obj,len){
+ var s=JSON.stringify(obj);
+ var enc=new TextEncoder().encode(s);
+ if(enc.length>len)throw new Error("header overflow: "+enc.length+">"+len);
+ var pad=" ".repeat(len-enc.length);
+ return new TextEncoder().encode(s+pad);
+}
+function dskHeaderObj(finalRows){
+ return {
+  format:"aswf",version:1,
+  channels:CH,interval_sec:intervalSec,
+  serial:serial||"",
+  calibration:calib||[],
+  started_at:wfStat&&wfStat.started_at?wfStat.started_at:Math.floor(Date.now()/1000),
+  saved_rows:finalRows|0,
+  source:"browser /waterfall WS",
+  saved_at:Math.floor(Date.now()/1000)
+ };
+}
+function writeDiskHeader(finalRows){
+ // Заголовок пишется по явным позициям 0 и 8; данные идут по dskDataPos.
+ // Никакого seek — поэтому header-запись не сдвигает курсор данных и не пересекается с потоком строк.
+ if(!dskWritable)return Promise.resolve();
+ var hdr=padJson(dskHeaderObj(finalRows),dskHdrReserve);
+ var prefix=new Uint8Array(8);
+ prefix[0]=0x41;prefix[1]=0x53;prefix[2]=0x57;prefix[3]=0x46;
+ new DataView(prefix.buffer).setUint32(4,dskHdrReserve,true);
+ return dskEnqueue(function(){
+  return dskWrite(0,prefix).then(function(){return dskWrite(8,hdr);});   // #REC-8: ретраи и для заголовка
+ });
+}
+async function startDiskStream(){
+ var host=(location.hostname||"esp").replace(/[^a-zA-Z0-9_.-]/g,"_");
+ var name="waterfall_"+host+"_"+dskTs()+".aswf";
+ dskRows=0;dskBytes=0;dskStart=Date.now();dskName=name;dskWriteErrs=0;
+ if("showSaveFilePicker" in window){
+  try{
+   var handle=await window.showSaveFilePicker({
+    suggestedName:name,
+    types:[{description:"AtomSpectra waterfall",accept:{"application/octet-stream":[".aswf"]}}]
+   });
+   dskHandle=handle;                  // #REC-9: сохранить handle для переоткрытия на контрольной точке
+   dskWritable=await handle.createWritable();
+   dskName=handle.name||name;
+   dskQueue=Promise.resolve(); dskStopping=false; dskCkptN=0;
+   dskDataPos=8+dskHdrReserve;        // данные начинаются сразу за зарезервированным заголовком
+   await writeDiskHeader(0);
+   dskFlushTimer=setInterval(flushDiskHeader,30000);
+   dskCkptTimer=setInterval(checkpointDisk,dskCkptMs);   // #REC-9: контрольная точка каждые 15 мин
+   lg(tfmt("log.disk_start_fsa",dskName));
+  }catch(e){
+   if(e&&e.name==="AbortError"){dskRows=0;dskBytes=0;return;}
+   lg(tfmt("log.disk_fsa_fail",e));
+   dskWritable=null;
+  }
+ }
+ if(!dskWritable){
+  dskMemChunks=[];
+  lg(tfmt("log.disk_start_ram",dskName));
+ }
+ document.getElementById("diskwrap").style.display="";
+ document.getElementById("bDisk").textContent=t("btn.disk_stop");
+ updDiskInd();
+ dskAcquireWake();   // #REC-8: не дать ПК/вкладке уснуть во время многочасового стрима
+ window.addEventListener("beforeunload",beforeUnloadDisk);
+}
+// #REC-8: Wake Lock — держим систему/вкладку активной, пока идёт диск-стрим.
+// Браузер снимает lock при сворачивании вкладки → переполучаем по visibilitychange.
+// Это убирает основную причину транзиентного сбоя write() за часы автономной записи.
+async function dskAcquireWake(){
+ try{if(("wakeLock" in navigator)&&!dskWakeLock){
+  dskWakeLock=await navigator.wakeLock.request("screen");
+  dskWakeLock.addEventListener("release",function(){dskWakeLock=null;});
+ }}catch(e){}
+}
+function dskReleaseWake(){try{if(dskWakeLock){var w=dskWakeLock;dskWakeLock=null;w.release();}}catch(e){}}
+document.addEventListener("visibilitychange",function(){
+ if(document.visibilityState==="visible"&&(dskWritable||dskMemChunks))dskAcquireWake();
+});
+function flushDiskHeader(){
+ if(!dskWritable)return;
+ writeDiskHeader(dskRows);   // ставится в общую очередь, сериализуется со стримом строк
+}
+// #REC-9: контрольная точка диск-стрима. FileSystemWritableFileStream пишет в
+// браузерный swap-файл; перенос в целевой .aswf на диске происходит ТОЛЬКО при
+// close(). До этой правки close() вызывался единственный раз — на «Стоп», поэтому
+// вся многочасовая запись жила в незакоммиченном swap: краш браузера / вылет вкладки
+// / пропажа питания ПК = потеря всей записи целиком. Теперь каждые 15 минут:
+//   1) дописываем актуальный заголовок (rows = факт записанных строк),
+//   2) close() — атомарный коммит swap → целевой файл,
+//   3) createWritable({keepExistingData:true}) — переоткрываем ТОТ ЖЕ файл на
+//      дозапись, сохранив уже записанные байты; продолжаем по прежним явным позициям.
+// Вся операция идёт через общий сериализатор dskQueue, поэтому строки, пришедшие во
+// время контрольной точки, встают в очередь ПОСЛЕ неё и пишутся уже в переоткрытый
+// поток. На диске после каждой точки — целостный валидный .aswf (заголовок ⟷ данные
+// согласованы); потеря при сбое ограничена последним ≤15-мин незакрытым сегментом.
+function checkpointDisk(){
+ if(!dskWritable||!dskHandle||dskStopping)return;
+ dskEnqueue(function(){
+  if(!dskWritable||!dskHandle)return;
+  var hdr=padJson(dskHeaderObj(dskRows),dskHdrReserve);
+  var prefix=new Uint8Array(8);
+  prefix[0]=0x41;prefix[1]=0x53;prefix[2]=0x57;prefix[3]=0x46;
+  new DataView(prefix.buffer).setUint32(4,dskHdrReserve,true);
+  var w=dskWritable;
+  return dskWrite(0,prefix)
+   .then(function(){return dskWrite(8,hdr);})
+   .then(function(){return w.close();})                                  // коммит swap → файл на диске
+   .then(function(){return dskHandle.createWritable({keepExistingData:true});})  // переоткрыть на дозапись
+   .then(function(nw){
+     dskWritable=nw; dskCkptN++;
+     lg(tfmt("log.disk_ckpt",dskCkptN,dskRows,(dskBytes/1048576).toFixed(2)));
+   });
+ });
+}
+async function stopDiskStream(){
+ if(dskStopping)return; dskStopping=true;
+ if(dskFlushTimer){clearInterval(dskFlushTimer);dskFlushTimer=null;}
+ if(dskCkptTimer){clearInterval(dskCkptTimer);dskCkptTimer=null;}   // #REC-9
+ window.removeEventListener("beforeunload",beforeUnloadDisk);
+ dskReleaseWake();   // #REC-8
+ var w=dskWritable;dskWritable=null;
+ var mem=dskMemChunks;dskMemChunks=null;
+ dskHandle=null;   // #REC-9: handle больше не нужен (финальный close() — на закрываемом w ниже)
+ try{await dskQueue;}catch(e){}   // дождаться завершения всех записей строк, прежде чем писать финальный заголовок и close()
+ try{
+  if(w){
+   var hdr=padJson(dskHeaderObj(dskRows),dskHdrReserve);
+   var prefix=new Uint8Array(8);
+   prefix[0]=0x41;prefix[1]=0x53;prefix[2]=0x57;prefix[3]=0x46;
+   new DataView(prefix.buffer).setUint32(4,dskHdrReserve,true);
+   await w.write({type:"write",position:0,data:prefix});
+   await w.write({type:"write",position:8,data:hdr});
+   await w.close();
+   lg(tfmt("log.disk_done",dskRows,(dskBytes/1048576).toFixed(2),dskName));
+  }else if(mem){
+   var hdr2=padJson(dskHeaderObj(dskRows),dskHdrReserve);
+   var prefix2=new Uint8Array(8);
+   prefix2[0]=0x41;prefix2[1]=0x53;prefix2[2]=0x57;prefix2[3]=0x46;
+   new DataView(prefix2.buffer).setUint32(4,dskHdrReserve,true);
+   var parts=[prefix2,hdr2].concat(mem);
+   var blob=new Blob(parts,{type:"application/octet-stream"});
+   var url=URL.createObjectURL(blob);
+   var a=document.createElement("a");
+   a.href=url;a.download=dskName;document.body.appendChild(a);a.click();
+   setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+   lg(tfmt("log.disk_blob",dskRows,(dskBytes/1048576).toFixed(2),dskName));
+  }
+ }catch(e){lg(t("log.disk_close_err")+e);}
+ document.getElementById("diskwrap").style.display="none";
+ document.getElementById("bDisk").textContent=t("btn.disk");
+}
+function beforeUnloadDisk(e){
+ if(!dskWritable)return;
+ e.preventDefault();e.returnValue=t("unload.recording");
+}
+function updDiskInd(){
+ var sec=Math.floor((Date.now()-dskStart)/1000);
+ var tag=(!dskWritable&&dskMemChunks)?t("disk.ram_tag"):"";   // ОЗУ-режим (Firefox/Safari) — файл скачается на «Стоп»
+ var errtag=dskWriteErrs?(" ⚠×"+dskWriteErrs):"";   // #REC-8: ⚠×N — были ретраи записи, но стрим жив
+ document.getElementById("disktxt").textContent=
+  tfmt("disk.ind",dskName,dskRows,(dskBytes/1048576).toFixed(2),fmtHMS(sec))+tag+errtag;
+ // #REC-5: цвет надписи «💾 Диск:» по назначению записи — красный=файл на диске, янтарный=буфер ОЗУ.
+ // Имя файла (b#disktxt) остаётся near-white по правилу «.ind b» — читаемо.
+ document.getElementById("diskwrap").style.color=dskWritable?"#ff5247":"#f0c45a";
+}
+
+var csrfToken="";
+function post(url,body){return fetch(url,{method:"POST",headers:{"X-CSRF-Token":csrfToken,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});}
+async function loadCsrf(){try{var r=await(await fetch("/api/csrf-token")).json();csrfToken=r.token||"";}catch(e){}}
+
+// === #REC-11-A2: автономная выгрузка сегментов (push HTTP POST на адрес оператора) ===
+// Народмон-бан (CLAUDE.md): URL c «narodmon» отвергается ещё в браузере — зеркало
+// серверного WF_OFFLOAD_ERR_BLOCKED. Пароль с платы НЕ приходит (только has_pass);
+// пустое поле пароля при сохранении → прежний пароль на плате сохраняется.
+function oflSetMsg(s,kind){var m=document.getElementById("oflMsg");if(!m)return;m.textContent=s||"";m.style.color=(kind==="ok")?"var(--accent)":(kind==="err")?"#ff8a82":"#6b756a";}
+function oflRenderStat(j){
+ var el=document.getElementById("oflStat"); if(!el)return;
+ var busy=j.busy?t("ofl.st_busy"):t("ofl.st_idle");
+ var last=j.last_ok_at?(new Date(j.last_ok_at*1000)).toLocaleString():t("ofl.never");
+ var pass=j.has_pass?("   ·   "+t("ofl.pass_set")):"";
+ el.textContent=t("ofl.st_sent")+" "+(j.sent_ok||0)+"   "+t("ofl.st_failed")+" "+(j.failed||0)+
+   "   "+t("ofl.st_last")+" "+(j.last_status||0)+"   "+busy+"   "+t("ofl.st_lastok")+" "+last+pass;
+}
+function loadOffload(){
+ fetch("/api/waterfall/offload").then(function(r){return r.json();}).then(function(j){
+  var en=document.getElementById("oflEn"); if(en)en.checked=!!j.enabled;
+  var u=document.getElementById("oflUrl"); if(u)u.value=j.url||"";
+  var us=document.getElementById("oflUser"); if(us)us.value=j.user||"";
+  oflRenderStat(j);
+ }).catch(function(){});
+}
+function oflPollStat(){   // лёгкое обновление статистики, не трогая поля ввода оператора
+ var card=document.getElementById("oflCard"); if(!card||!card.open)return;
+ var ae=document.activeElement; if(ae&&(ae.id==="oflUrl"||ae.id==="oflUser"||ae.id==="oflPass"))return;
+ fetch("/api/waterfall/offload").then(function(r){return r.json();}).then(oflRenderStat).catch(function(){});
+}
+function saveOffload(){
+ var en=document.getElementById("oflEn").checked;
+ var url=(document.getElementById("oflUrl").value||"").trim();
+ if(/narodmon/i.test(url)){oflSetMsg(t("ofl.err_blocked"),"err");return;}      // зеркало WF_OFFLOAD_ERR_BLOCKED
+ if(en&&!/^http:\/\//i.test(url)){oflSetMsg(t("ofl.err_invalid"),"err");return;}
+ var body={enabled:en,url:url,user:(document.getElementById("oflUser").value||"")};
+ var pw=document.getElementById("oflPass").value; if(pw)body.pass=pw;          // пусто → прежний пароль сохраняется
+ oflSetMsg("…","");
+ post("/api/waterfall/offload",body).then(function(r){return r.json();}).then(function(j){
+  if(j&&j.ok){oflSetMsg(t("ofl.saved"),"ok");document.getElementById("oflPass").value="";loadOffload();}
+  else{var e=(j&&j.err)||"error";var k={"narodmon-blocked":"ofl.err_blocked","invalid-url":"ofl.err_invalid","nvs":"ofl.err_nvs"}[e]||"ofl.err";oflSetMsg(t(k),"err");}
+ }).catch(function(){oflSetMsg(t("ofl.err"),"err");});
+}
+
+document.getElementById("bStart").onclick=async function(){await post("/api/waterfall/start");refreshStatus();};
+document.getElementById("bStop").onclick=async function(){await post("/api/waterfall/stop");refreshStatus();};
+document.getElementById("bClear").onclick=async function(){
+ if(!confirm(t("confirm.clear")))return;
+ await post("/api/waterfall/clear");clearRows();draw();refreshStatus();lg(t("log.cleared"));};
+async function applyInterval(){
+ var el=document.getElementById("iv");
+ var v=parseInt(el.value)||5;
+ if(v<5)v=5; if(v>3600)v=3600; el.value=v;
+ await post("/api/waterfall/config",{interval:v});refreshStatus();lg(tfmt("log.interval",v));}
+document.getElementById("bIv").onclick=applyInterval;
+document.getElementById("iv").onchange=applyInterval;
+document.getElementById("persist").onchange=async function(){
+ await post("/api/waterfall/config",{persist:this.checked});refreshStatus();};
+document.getElementById("bExportN42").onclick=function(){window.location="/api/waterfall/export.n42";lg(t("log.export"));};
+document.getElementById("bExportAswf").onclick=function(){window.location="/api/waterfall/export.aswf";lg(t("log.export_aswf"));};
+document.getElementById("bDisk").onclick=function(){
+ if(dskWritable||dskMemChunks)stopDiskStream();else startDiskStream();
+};
+if(!("showSaveFilePicker" in window)){
+ document.getElementById("bDisk").title=
+  "Этот браузер не поддерживает File System Access API — буду копить в ОЗУ, на «Стоп» скачается одним файлом. "+
+  "Для длинных сессий используйте Chrome / Edge / Opera или scripts/waterfall_client.py.";
+}
+
+document.getElementById("axis").onchange=function(){axisMode=this.value;draw();};
+document.getElementById("scale").onchange=function(){scaleMode=this.value;draw();};
+document.getElementById("gain").oninput=function(){gain=parseInt(this.value);draw();};
+function applyZoom(){chLo=parseInt(document.getElementById("chLo").value)||0;
+ chHi=parseInt(document.getElementById("chHi").value)||CH;chHiClamp();draw();}
+document.getElementById("chLo").onchange=applyZoom;
+document.getElementById("chHi").onchange=applyZoom;
+document.getElementById("bFit").onclick=function(){chLo=0;chHi=CH;
+ document.getElementById("chLo").value=0;document.getElementById("chHi").value=CH;draw();};
+Array.prototype.forEach.call(document.querySelectorAll("#slcSeg button"),function(b){
+ b.onclick=function(){
+  Array.prototype.forEach.call(document.querySelectorAll("#slcSeg button"),function(x){x.classList.remove("on");});
+  this.classList.add("on");
+  slcMode=this.getAttribute("data-v");
+  drawSlice();
+ };
+});
+
+wf.addEventListener("wheel",function(e){
+ /* #UI-27: обычное колесо НЕ перехватываем — страница должна скроллиться.
+    Shift+колесо = зум по каналам (X), Alt+колесо = прокрутка истории водопада. */
+ if(e.shiftKey){
+  e.preventDefault();
+  var rc=wf.getBoundingClientRect();var x=(e.clientX-rc.left)*(WFW/rc.width);
+  var span=chHi-chLo;var cc=chLo+x/WFW*span;
+  var f=e.deltaY<0?0.8:1.25;var ns=Math.max(16,Math.min(CH,span*f));
+  chLo=Math.round(cc-(x/WFW)*ns);chHi=Math.round(chLo+ns);chHiClamp();
+  document.getElementById("chLo").value=chLo;document.getElementById("chHi").value=chHi;
+  draw();
+ }else if(e.altKey){
+  e.preventDefault();
+  var lastIdx=baseIndex+rows.length-1;
+  var bottom=(viewBottom<0)?lastIdx:viewBottom;
+  var step=e.deltaY<0?-3:3;
+  bottom+=step;
+  var lo=baseIndex+Math.min(WFH,rows.length)-1;if(bottom<lo)bottom=lo;viewBottom=(bottom>=lastIdx)?-1:bottom;   // #UI-4: пол окна = WFHd → нет пустых строк сверху
+  draw();
+ }
+},{passive:false});
+
+(async function(){
+ applyI18n();
+ var lb=document.getElementById("langBtn");
+ if(lb)lb.onclick=function(){setLang(LANG==="ru"?"en":"ru");};
+ document.getElementById("ip-chip").textContent=location.hostname;
+ var sb=document.getElementById("wf-scroll");
+ if(sb)sb.addEventListener("input",function(){
+  var lastIdx=baseIndex+rows.length-1;
+  var v=parseInt(sb.value)||0;
+  if(v<=0){viewBottom=-1;}
+  else{var win=Math.min(WFH,rows.length);var lo=baseIndex+win-1;var bottom=lastIdx-v;if(bottom<lo)bottom=lo;viewBottom=(bottom>=lastIdx)?-1:bottom;}   // #UI-4: пол окна = WFHd → нет пустых строк сверху
+  draw();
+ });
+ var savedPal="Inferno";
+ try{var lp=localStorage.getItem("aswf-pal");if(lp&&PALETTES[lp])savedPal=lp;}catch(e){}
+ applyPalette(savedPal);
+ await loadCsrf();
+ try{var sp=await(await fetch("/api/spectrum.json")).json();
+  if(sp.calib&&sp.calib.length)calib=sp.calib;
+  if(sp.serial){serial=sp.serial;document.getElementById("device-chip").textContent=sp.serial;}
+ }catch(e){}
+ await refreshStatus();
+ await refreshSystem();
+ await backfill();
+ connectWS();
+ var os=document.getElementById("oflSave"); if(os)os.onclick=saveOffload;   // #REC-11-A2
+ loadOffload();
+ setInterval(refreshStatus,5000);
+ setInterval(refreshSystem,5000);
+ setInterval(tickRecTime,1000);
+ setInterval(oflPollStat,5000);   // #REC-11-A2: статистика выгрузки, только при раскрытой карточке
+})();
+</script>
+<style>
+.zoom-overlay{position:fixed;inset:0;background:#000;z-index:9999;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.zoom-overlay canvas{touch-action:none;cursor:grab;background:#000;display:block}
+.zoom-overlay.dragging canvas{cursor:grabbing}
+.zoom-overlay .zo-x{position:absolute;top:14px;right:14px;background:rgba(20,24,18,.85);color:#cfd6cd;border:1px solid #2b3327;border-radius:8px;padding:8px 14px;font:600 16px system-ui;cursor:pointer;z-index:2}
+.zoom-overlay .zo-x:hover{border-color:#34d3c0;color:#34d3c0}
+.zoom-overlay .zo-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(20,24,18,.7);color:#8a9686;border:1px solid #20281e;border-radius:8px;padding:6px 12px;font:12px system-ui;pointer-events:none;white-space:nowrap}
+#wrap-wf{cursor:zoom-in}
+#slc{cursor:zoom-in}
+</style>
+<script>
+(function(){
+if(window.openZoomOverlay)return;
+window.openZoomOverlay=function(sourcesFn,opts){
+ opts=opts||{};
+ var ov=document.createElement("div");ov.className="zoom-overlay";
+ var cv=document.createElement("canvas");
+ var btn=document.createElement("button");btn.className="zo-x";btn.textContent="✕";
+ var hint=document.createElement("div");hint.className="zo-hint";
+ hint.textContent=(window.LANG==="en")?"wheel / pinch = zoom · drag = pan · dblclick = reset · Esc = close":"колесо / щипок = зум · drag = pan · 2× клик = сброс · Esc = выход";
+ ov.appendChild(cv);ov.appendChild(btn);ov.appendChild(hint);
+ document.body.appendChild(ov);
+ var prevOvf=document.body.style.overflow;document.body.style.overflow="hidden"; /* #UI-24: лок прокрутки фона */
+ var zoom=1,panX=0,panY=0,W=0,H=0,raf=0,closed=false;
+ /* #DEMO-11: геометрия последнего кадра (диапазон вертикального пана + масштаб),
+    нужна чтобы перевод «перетянул за край» → прокрутка по строкам истории. */
+ var lastGeo=null;
+ /* #UI-19: живой маркер курсора в оверлее */
+ var mouse={x:0,y:0,inside:false};
+ var cmap=null;
+ var vcy=0; /* #DEMO-5: вертикальный центр области спектрограммы (без полосы среза) */
+ function resize(){W=ov.clientWidth;H=ov.clientHeight;var dpr=window.devicePixelRatio||1;cv.style.width=W+"px";cv.style.height=H+"px";cv.width=Math.floor(W*dpr);cv.height=Math.floor(H*dpr);}
+ resize();window.addEventListener("resize",resize);
+ function render(){
+  if(closed)return;
+  var srcs=sourcesFn();
+  var ctx=cv.getContext("2d");
+  var dpr=window.devicePixelRatio||1;
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000";ctx.fillRect(0,0,cv.width,cv.height);
+  cmap=null;
+  var pclip=null; /* #UI-22: экранные границы панели по вертикали (для обрезки курсора) */
+  if(srcs&&srcs.length){
+   /* #DEMO-5: zoom/pan действуют ТОЛЬКО на спектрограмму (src[0]).
+      Срез (src[1]) — фиксированная полоса снизу, не масштабируется и не двигается:
+      колесо увеличивает спектрограмму, перетаскивание (ЛКМ/ПКМ) навигирует по ней. */
+   var spg=srcs[0].canvas;
+   var slc=srcs[1]?srcs[1].canvas:null;
+   var Wd=0.98*W, ox=(W-Wd)/2;
+   var slcH=slc?Math.min(0.24*H, Wd*(slc.height/slc.width)):0;
+   var gap=slc?10:0;
+   var regionH=H-slcH-gap;          /* область спектрограммы: y∈[0..regionH] */
+   vcy=regionH/2;                   /* центр зума/пана — центр области спектрограммы */
+   var totH=0.98*regionH;           /* fill области по высоте (как и было — без сохранения аспекта) */
+   var oy0=(regionH-totH)/2;
+   /* #UI-24/#DEMO-5/#DEMO-8: pan не выпускает спектрограмму за края её области.
+      Единый clamp по доступному зазору при ЛЮБОМ зуме (включая fit): применённый
+      «ладонью» сдвиг сохраняется в границах рамки, а НЕ затирается принудительным
+      центрированием каждый кадр. Старый else (panX=center) сбрасывал перетаскивание
+      на fit-зуме → «перемещение ладонью не работает» (#DEMO-8). На открытии panX=0
+      попадает в [lo,hi] → контент по-прежнему по центру; за края не уходит (#UI-24). */
+   var L0=(ox-W/2)*zoom+W/2, R0=(ox+Wd-W/2)*zoom+W/2;
+   var loX=Math.min(-L0,W-R0), hiX=Math.max(-L0,W-R0); panX=Math.max(loX,Math.min(hiX,panX));
+   var T0=(oy0-vcy)*zoom+vcy, B0=(oy0+totH-vcy)*zoom+vcy;
+   var loY=Math.min(-T0,regionH-B0), hiY=Math.max(-T0,regionH-B0); panY=Math.max(loY,Math.min(hiY,panY));
+   /* #DEMO-11: сохраняем диапазон пана и масштаб строк для drag→scroll-by-rows */
+   lastGeo={loY:loY,hiY:hiY,totH:totH,zoom:zoom,regionH:regionH};
+   /* #UI-22/#UI-26: экранные границы спектрограммы по обеим осям */
+   pclip={top:T0+panY, bot:B0+panY, left:L0+panX, right:R0+panX};
+   /* #UI-21: курсор над спектрограммой → доля fx/fy строки/канала наружу (инверсия zoom/pan по vcy). */
+   if(opts.onCursor&&mouse.inside){
+    var Txp=(mouse.x-W/2-panX)/zoom+W/2, Typ=(mouse.y-vcy-panY)/zoom+vcy;
+    var fx=(Txp-ox)/Wd, fy=(Typ-oy0)/totH;
+    if(fx>=0&&fx<=1&&fy>=0&&fy<=1)opts.onCursor(fx,fy);
+   }
+   /* спектрограмма — с zoom/pan вокруг vcy */
+   ctx.setTransform(dpr,0,0,dpr,0,0);
+   ctx.imageSmoothingEnabled=false; /* #UI-28: без интерполяции — чётко, без размытия */
+   ctx.save();
+   ctx.translate(W/2+panX,vcy+panY);ctx.scale(zoom,zoom);ctx.translate(-W/2,-vcy);
+   ctx.drawImage(spg,ox,oy0,Wd,totH);
+   ctx.restore();
+   cmap={x0:ox,w:Wd,y0:oy0,h:totH}; /* #UI-29: рамка спектрограммы для fracX/fracY */
+   /* #DEMO-9: срез повторяет ГОРИЗОНТАЛЬНУЮ трансформацию спектрограммы (zoom + panX
+      вокруг W/2), чтобы канал c был на одном и том же экранном X в спектрограмме и в
+      срезе («начало совпадает»). По вертикали — фиксированная полоса снизу (#DEMO-5):
+      scale(zoom,1), без panY, высота slcH не масштабируется. */
+   if(slc){
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.imageSmoothingEnabled=false;
+    ctx.save();
+    ctx.beginPath();ctx.rect(0,regionH+gap,W,slcH);ctx.clip(); /* срез не вылезает за свою полосу */
+    ctx.translate(W/2+panX,regionH+gap);
+    ctx.scale(zoom,1);
+    ctx.translate(-W/2,0);
+    ctx.drawImage(slc,ox,0,Wd,slcH);
+    ctx.restore();
+   }
+  }
+  /* #UI-19/#UI-12: вертикальный маркер курсора (screen-space CSS px) + readout */
+  if(mouse.inside){
+   ctx.setTransform(dpr,0,0,dpr,0,0);
+   ctx.strokeStyle="#34d3c0";ctx.lineWidth=1;ctx.setLineDash([5,4]);
+   /* #UI-22: линия курсора обрезана по рамке панели, не на всю высоту канваса */
+   var ly0=pclip?Math.max(0,pclip.top):0, ly1=pclip?Math.min(H,pclip.bot):H;
+   if(ly1>ly0){ctx.beginPath();ctx.moveTo(mouse.x+0.5,ly0);ctx.lineTo(mouse.x+0.5,ly1);ctx.stroke();}
+   /* #UI-26: горизонтальная линия курсора (перекрестье), обрезана по рамке панели */
+   var lx0=pclip?Math.max(0,pclip.left):0, lx1=pclip?Math.min(W,pclip.right):W;
+   if(lx1>lx0){ctx.beginPath();ctx.moveTo(lx0,mouse.y+0.5);ctx.lineTo(lx1,mouse.y+0.5);ctx.stroke();}
+   ctx.setLineDash([]);
+   if(opts.readout&&cmap){
+    /* #UI-29: значения (cps/E/время) у перекрестья — multi-line бокс рядом с курсором */
+    var Tx=(mouse.x-W/2-panX)/zoom+W/2, Ty=(mouse.y-vcy-panY)/zoom+vcy;
+    var fracX=(Tx-cmap.x0)/cmap.w, fracY=(Ty-cmap.y0)/cmap.h;
+    var lbl=(fracX>=0&&fracX<=1)?opts.readout(fracX,fracY):null;
+    if(lbl){
+     ctx.font="600 13px ui-monospace,monospace";
+     var lines=(""+lbl).split("\n");
+     var lh=17,padX=7,padY=5,tw=0;
+     for(var qi=0;qi<lines.length;qi++){var qw=ctx.measureText(lines[qi]).width;if(qw>tw)tw=qw;}
+     var bw=tw+padX*2,bh=lines.length*lh+padY*2;
+     var bx=mouse.x+16;if(bx+bw>W-4)bx=mouse.x-16-bw;if(bx<4)bx=4;
+     var by=mouse.y+16;if(by+bh>H-4)by=mouse.y-16-bh;if(by<4)by=4;
+     ctx.fillStyle="rgba(10,14,9,.88)";ctx.fillRect(bx,by,bw,bh);
+     ctx.fillStyle="#34d3c0";ctx.textBaseline="top";ctx.textAlign="left";
+     for(var qi2=0;qi2<lines.length;qi2++)ctx.fillText(lines[qi2],bx+padX,by+padY+qi2*lh);
+    }
+   }
+  }
+  raf=requestAnimationFrame(render);
+ }
+ raf=requestAnimationFrame(render);
+ function close(){if(closed)return;closed=true;cancelAnimationFrame(raf);window.removeEventListener("keydown",onKey);window.removeEventListener("resize",resize);document.body.style.overflow=prevOvf;if(ov.parentNode)ov.parentNode.removeChild(ov);}
+ function onKey(e){if(e.key==="Escape")close();}
+ window.addEventListener("keydown",onKey);
+ btn.addEventListener("click",close);
+ cv.addEventListener("dblclick",function(){zoom=1;panX=0;panY=0;});
+ cv.addEventListener("mousemove",function(e){var r=cv.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;});
+ cv.addEventListener("mouseleave",function(){mouse.inside=false;});
+ cv.addEventListener("wheel",function(e){
+  e.preventDefault();
+  var rect=cv.getBoundingClientRect();
+  var cx=e.clientX-rect.left-W/2,cy=e.clientY-rect.top-vcy; /* #DEMO-5: зум вокруг центра спектрограммы */
+  var f=e.deltaY<0?1.15:1/1.15;
+  var nz=Math.max(1,Math.min(60,zoom*f)); /* #UI-25: не меньше fit (вписанного окна) */
+  panX=cx-(cx-panX)*nz/zoom;panY=cy-(cy-panY)*nz/zoom;zoom=nz;
+ },{passive:false});
+ /* #DEMO-11: применяем инкрементальный сдвиг «ладони». По X — обычный pan (кламп в
+    render). По Y: сначала pan в пределах [loY,hiY]; «перелив» за край (когда спектрограмма
+    уже прижата к границе своей области) переводим в прокрутку по строкам истории через
+    opts.onScrollRows(frac), где frac — доля высоты образа спектрограммы. Так «ладонью»
+    можно пройти всю временную шкалу, а не упереться в край рамки. */
+ function applyDrag(dx,dy){
+  panX+=dx;
+  var ny=panY+dy;
+  if(lastGeo){
+   var c=Math.max(lastGeo.loY,Math.min(lastGeo.hiY,ny));
+   var ovf=ny-c; panY=c;
+   var denom=lastGeo.totH*lastGeo.zoom;
+   if(ovf!==0&&opts.onScrollRows&&denom>0)opts.onScrollRows(ovf/denom);
+  }else{panY=ny;}
+ }
+ var drag=null;
+ cv.addEventListener("pointerdown",function(e){if(e.pointerType==="touch")return;e.preventDefault();/* #DEMO-8: гасим нативное выделение/drag картинки, чтобы ЛКМ-«ладонь» начинала pan надёжно */try{cv.setPointerCapture(e.pointerId);}catch(_){}drag={x:e.clientX,y:e.clientY};ov.classList.add("dragging");});
+ cv.addEventListener("pointermove",function(e){if(!drag)return;var dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;applyDrag(dx,dy);});
+ cv.addEventListener("pointerup",function(e){drag=null;ov.classList.remove("dragging");try{cv.releasePointerCapture(e.pointerId);}catch(_){}});
+ cv.addEventListener("contextmenu",function(e){e.preventDefault();}); /* #DEMO-5: ПКМ — навигация по спектрограмме, без меню браузера */
+ var pinch=null,tdrag=null;
+ cv.addEventListener("touchstart",function(e){
+  if(e.touches.length===2){
+   tdrag=null;
+   var t1=e.touches[0],t2=e.touches[1];
+   var dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
+   pinch={d:Math.hypot(dx,dy),zoom:zoom,cx:(t1.clientX+t2.clientX)/2,cy:(t1.clientY+t2.clientY)/2,panX:panX,panY:panY};
+  }else if(e.touches.length===1){
+   tdrag={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  }
+ },{passive:true});
+ cv.addEventListener("touchmove",function(e){
+  if(e.touches.length===2&&pinch){
+   e.preventDefault();
+   var t1=e.touches[0],t2=e.touches[1];
+   var dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
+   var d=Math.hypot(dx,dy);
+   var f=d/Math.max(1,pinch.d);
+   var nz=Math.max(1,Math.min(60,pinch.zoom*f)); /* #UI-25: не меньше fit */
+   var rect=cv.getBoundingClientRect();
+   var cx=pinch.cx-rect.left-W/2,cy=pinch.cy-rect.top-vcy; /* #DEMO-5 */
+   panX=cx-(cx-pinch.panX)*nz/pinch.zoom;panY=cy-(cy-pinch.panY)*nz/pinch.zoom;zoom=nz;
+  }else if(e.touches.length===1&&tdrag){
+   e.preventDefault();
+   var tx=e.touches[0].clientX,ty=e.touches[0].clientY;
+   var ddx=tx-tdrag.x,ddy=ty-tdrag.y;
+   tdrag.x=tx;tdrag.y=ty;
+   applyDrag(ddx,ddy);
+  }
+ },{passive:false});
+ cv.addEventListener("touchend",function(e){if(e.touches.length<2)pinch=null;if(e.touches.length<1)tdrag=null;});
+ return {close:close};
+};
+})();
+(function(){
+ var wrap=document.getElementById("wrap-wf");
+ var wfEl=document.getElementById("wf");
+ var slcEl=document.getElementById("slc");
+ /* #DEMO-10: композит строим в МАКСИМАЛЬНОМ разрешении из a/b. Слой cur (оси/курсор/
+    линии нуклидов/подписи) — супердискретизирован (1800×1040 через hidpi), wf-heatmap —
+    900×520. Раньше композит брал размер a (=wf, 900) и ужимал cur до 900 → текст осей
+    запекался в 900px и в оверлее растягивался ~2× → мыло. Теперь холст = размер большего
+    слоя, heatmap апскейлим пиксельно (он и так дискретный), а текст cur ложится на родном
+    разрешении → в оверлее рисуется почти 1:1, чётко. */
+ function compose(a,b){
+  var W=b?Math.max(a.width,b.width):a.width;
+  var H=b?Math.max(a.height,b.height):a.height;
+  var c=document.createElement("canvas");
+  c.width=W; c.height=H;
+  var cx=c.getContext("2d");
+  cx.imageSmoothingEnabled=false;
+  cx.drawImage(a,0,0,W,H);
+  if(b)cx.drawImage(b,0,0,W,H);
+  return c;
+ }
+ function open(){
+  var scrollAcc=0; /* #DEMO-11: накопитель дробных строк при drag→scroll */
+  window.openZoomOverlay(function(){
+   var arr=[];
+   var curEl=document.getElementById("cur");
+   if(wfEl)arr.push({canvas:curEl?compose(wfEl,curEl):wfEl});
+   if(slcEl)arr.push({canvas:slcEl});
+   return arr;
+  },{
+   /* #DEMO-11: «перетянул за край» (frac — доля высоты образа спектрограммы) →
+      прокрутка истории. frac>0 (тянем вниз) → новее (к live); frac<0 → старее.
+      Дробь копим, применяем целыми строками; на концах сбрасываем накопитель. */
+   onScrollRows:function(frac){
+    if(!rows.length)return;
+    var lastIdx=baseIndex+rows.length-1;
+    var oldest=baseIndex+(WFH-1); if(oldest>lastIdx)oldest=lastIdx;
+    var bottom=(viewBottom<0)?lastIdx:viewBottom;
+    scrollAcc+=frac*WFH;
+    var step=scrollAcc|0; if(step===0)return;
+    scrollAcc-=step;
+    bottom+=step;
+    if(bottom>=lastIdx){viewBottom=-1;scrollAcc=0;}
+    else if(bottom<=oldest){viewBottom=oldest;scrollAcc=0;}
+    else{viewBottom=bottom;}
+    draw();
+   },
+   /* #UI-21: курсор над водопадом в оверлее → срез ИМЕННО строки под курсором.
+      fx — доля по каналам [0..1], fy — доля по высоте образа (0=верх=новейшая строка). */
+   onCursor:function(fx,fy){
+    var lastIdx=baseIndex+rows.length-1;
+    var bottom=(viewBottom<0)?lastIdx:viewBottom;
+    var li=(bottom-Math.floor(fy*WFHd))-baseIndex;
+    var span=chHi-chLo; if(span<1)span=1;
+    slcCursorCh=chLo+Math.floor(fx*span);
+    if(li>=0&&li<rows.length){slcHoverLi=li;slcCursorInDark=false;}
+    else{slcCursorInDark=true;}
+    drawSlice();
+   },
+   /* #UI-29: cps (отсчёты/интервал строки), E (энергия канала), t (время строки) */
+   readout:function(fx,fy){
+    if(fx<0||fx>1||fy<0||fy>1||!rows.length)return null;
+    var lastIdx=baseIndex+rows.length-1;
+    var bottom=(viewBottom<0)?lastIdx:viewBottom;
+    var gIdx=bottom-Math.floor(fy*WFHd);
+    var li=gIdx-baseIndex;
+    if(li<0||li>=rows.length)return null;
+    var span=chHi-chLo; if(span<1)span=1;
+    var c=chLo+Math.floor(fx*span);
+    var row=rows[li];
+    var cnt=(c<row.length)?row[c]:0;
+    var cps=(intervalSec>0)?(cnt/intervalSec):0;
+    var eStr=calib?(ch2kev(c).toFixed(1)+" "+t("opt.kev")):("ch "+c);
+    var tStr;
+    if(startedAt>0){tStr=new Date((startedAt+gIdx*intervalSec)*1000).toLocaleTimeString(LANG==="ru"?"ru-RU":"en-US");}
+    else{var es=gIdx*intervalSec;tStr="+"+Math.floor(es/60)+"m "+(es%60)+"s";}
+    return "CPS "+cps.toFixed(2)+"\nE "+eStr+"\nt "+tStr;
+   }
+  });
+ }
+ if(wrap)wrap.addEventListener("click",open);
+ if(slcEl)slcEl.addEventListener("click",open);
+})();
+/* #DEMO-12: выбор нуклидов меняется на «Спектре» (index.html) и пишется в общий
+   localStorage["aswf-nuc"]. Если открыты обе вкладки — подхватываем выбор на лету. */
+window.addEventListener("storage",function(e){
+ if(e.key!=="aswf-nuc")return;
+ try{var o=JSON.parse(e.newValue||"{}");if(o&&typeof o==="object")nucShow=o;}catch(_){}
+ if(typeof draw==="function")draw();
+});
+</script>
+</body>
+</html>

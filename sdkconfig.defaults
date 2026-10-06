@@ -1,0 +1,149 @@
+# AtomSpectra Gateway — ESP32-S3-N16R8
+# USB Host + WiFi + Web Server + LittleFS
+
+# Target
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash / PSRAM
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# USB Host
+CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=1024
+# #FW-46: аппаратный FIFO USB Host — bias в сторону IN. Трафик спектрометра ~99% IN
+# (приём гистограмм/текста), TX мизерный (-inf/-sta/-cal редкими короткими командами).
+# BALANCED делит FIFO поровну → под нагрузкой RX голодает, рвутся SHPROTO-кадры.
+# Замер оператора: bridge-режим 10 мин, 0 битых shproto-пакетов. Choice взаимоисключающий
+# с BALANCED/PERIODIC_OUT — старый BALANCED закомментирован.
+# CONFIG_USB_HOST_HW_BUFFER_BIAS_BALANCED=y
+CONFIG_USB_HOST_HW_BUFFER_BIAS_IN=y
+CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK=y
+
+# WiFi
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
+
+# Network — больше сокетов для частого polling Web UI (иначе httpd accept errno 23)
+CONFIG_LWIP_MAX_SOCKETS=16
+# #FW-46: имя платы в DHCP (косметика) — atomspectra-gw вместо дефолтного "espressif".
+CONFIG_LWIP_LOCAL_HOSTNAME="atomspectra-gw"
+
+# #TCP-1: дефолтный TCP send-буфер/окно = 5760 Б (~100 мс потока спектры @ 58 КБ/с).
+# Любой джиттер WiFi 2.4 ГГц >100 мс переполнял его → потеря байт в TCP-мосте.
+# Поднимаем до 64 КБ (максимум без window scaling) — мост терпит секунды задержки.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535
+CONFIG_LWIP_TCP_WND_DEFAULT=65535
+
+# WebSocket support для /ws/waterfall (live-стрим строк спектрограммы)
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# #UI-33: Ctrl+F5 (hard reload) шлёт заголовки >512 Б (Authorization Basic +
+# Sec-Fetch-* + Accept* + no-cache) → httpd отвечал 431 и UI обваливался.
+# Поднимаем лимит блока заголовков и URI до 1024 Б.
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=1024
+
+# LittleFS for spectrum storage
+CONFIG_LITTLEFS_MAX_PARTITIONS=3
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Task watchdog
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# Partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# #SEC-1: шифрование NVS (пароль WiFi во flash) — ОПЦИОНАЛЬНО, по умолчанию ВЫКЛ
+# ─────────────────────────────────────────────────────────────────────────────
+# Пароль WiFi (а также basic-auth Web UI и OTA) хранится в разделе nvs открытым
+# текстом (см. wifi_manager.c). Любой с физическим доступом к плате может вычитать
+# flash (esptool read_flash 0x9000 0x6000) и достать пароль строкой. Для модели
+# "доверенный домашний LAN" это принято; если плата стоит в недоверенной среде —
+# включите шифрование, раскомментировав блок ниже.
+#
+# ⚠ ВНИМАНИЕ — НЕОБРАТИМО. Flash encryption прожигает eFuse на чипе ESP32-S3:
+#   • процесс нельзя откатить, чип нельзя вернуть в исходное состояние;
+#   • в Release-режиме перепрошивка по UART блокируется навсегда;
+#   • ошибка в конфигурации может окирпичить плату.
+# Включать ТОЛЬКО осознанно, прочитав официальную документацию Espressif
+# (Security → Flash Encryption, NVS Encryption). Последствия и порядок действий —
+# в INSTALL.md, раздел "9. Безопасность".
+#
+# Чтобы включить: раскомментировать 2 строки ниже, пересобрать с нуля
+# (idf.py fullclean && idf.py build) и прошить.
+#
+#CONFIG_SECURE_FLASH_ENC_ENABLED=y
+#CONFIG_NVS_ENCRYPTION=y
+
+# #WF-1 шаг 3: auto-suspend ОТКЛЮЧЁН — flash чип платы не в whitelist ESP-IDF,
+# init_flash assert при старте. Требует другого подхода (fsync batching).
+# CONFIG_SPI_FLASH_AUTO_SUSPEND=y
+
+# #ETH-35: W5500 Ethernet over SPI — встроенный драйвер ESP-IDF
+CONFIG_ETH_USE_SPI_ETHERNET=y
+CONFIG_ETH_SPI_ETHERNET_W5500=y
+
+# #TFT-18: шрифты экрана спектра (макет 2026-09-28): 12 — подписи и шкалы,
+# 16 — значения в шапке, 28 — крупное CPS. 14 включён по умолчанию LVGL.
+# Только ASCII + ° и •: кириллицы и «µ» в них НЕТ (решение — без кириллицы).
+CONFIG_LV_FONT_MONTSERRAT_12=y
+CONFIG_LV_FONT_MONTSERRAT_16=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+
+# #TFT-19: ST7796 по SPI ждёт RGB565 старшим байтом вперёд, а LVGL без этого
+# ключа кладёт в буфер little-endian — тёмная палитра превращалась в пурпурную
+# (#11150f -> 0x10A1 -> на проводе 0xA110), сглаживание шрифтов — в цветную рябь.
+# swap_bytes в esp_lvgl_port для LVGL 8 объявлен, но НЕ реализован — только так.
+CONFIG_LV_COLOR_16_SWAP=y
+
+# #NET-1: буферы WiFi/lwIP — в PSRAM. Замер 2026-09-28 (дисплей включён, спектр
+# с данными, нагрузка как у веб-страницы): внутренняя RAM 108887 -> 567 Б за 3 мин,
+# потеряно 50 из 65 пингов. Очередь передачи WiFi (32 буфера по ~1.6 КБ) при
+# ответах /api/spectrum.json по 18 КБ выбирала остаток внутренней памяти.
+# Окна TCP (65535, под мост 8234) НЕ трогаем — меняется только место памяти.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+
+# #SD-3: длинные имена файлов на SD-карте (дата в имени CSV). Рабочий буфер
+# имени — из кучи на время операции (CONFIG_FATFS_ALLOC_PREFER_EXTRAM -> PSRAM),
+# не со стека задачи: внутренней RAM впритык.
+CONFIG_FATFS_LFN_HEAP=y
+
+# #TFT-30: пул LVGL 32 -> 64 КБ. Экраны «Водопад» и «Conf» (2026-09-29) исчерпали
+# 32 КБ: lv_label_create получал NULL и плата падала при старте (StoreProhibited
+# в lv_obj_class_create_obj). Пул лежит в PSRAM (#TFT-17, LV_MEM_POOL_ALLOC) —
+# внутреннюю RAM не тратит.
+# #TFT-41: 96 КБ (было 64) — клавиатура и список сетей WiFi; пул в PSRAM
+CONFIG_LV_MEM_SIZE_KILOBYTES=96
+
+# #NET-2: задача WiFi и стек TCP/IP — на ядро 1 (по умолчанию WiFi на ядре 0).
+# Приём USB (usb_lib 7 / CDC 8) живёт на ядре 0, а WiFi (23) и tcpip (18) его
+# вытесняли: FTDI не опрашивался > 4.3 мс, его FIFO переполнялся — «histogram
+# sweep dropped». Замер 2026-09-30, 60 с, экран выключен: WiFi на ядре 0 —
+# 17 потерь свипов и 64 флага переполнения FTDI, на ядре 1 — 4-7 и 10-12.
+# Остальная сеть проекта уже на ядре 1 (#TCP-2).
+CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_1=y
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU1=y
+
+# #SYS-1: загрузка ядер ESP32 (лог и шапка экрана) — по времени задач Idle.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+
+# #PERF-1 (2026-09-30, по рекомендациям Espressif для LVGL: esp_lvgl_port
+# docs/performance.md, ESP-FAQ LCD) — только то, что не отнимает внутреннюю RAM:
+# CPU 240 МГц, сборка -O2, стандартные memcpy/memset в LVGL, линия D-кэша 64 Б
+# (объём кэша прежний). НЕ включено: LV_ATTRIBUTE_FAST_MEM_USE_IRAM (IRAM = та же
+# внутренняя RAM), флеш/PSRAM 120 МГц и QIO (риск незагрузки), FREERTOS_HZ 1000.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_LV_MEMCPY_MEMSET_STD=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# #OTA-1: прошивка по WiFi стартует «на испытании» — если упадёт до
+# esp_ota_mark_app_valid_cancel_rollback() (main.c, 30 с работы), загрузчик
+# вернёт прежнюю.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

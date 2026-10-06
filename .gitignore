@@ -1,0 +1,8 @@
+# сборка ESP-IDF и скачиваемые компоненты (их вернёт component manager по dependencies.lock)
+build/
+build-*/
+managed_components/
+sdkconfig.old
+dist/
+*.log
+__pycache__/

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="page.title">AtomSpectra · Мониторинг</title>
+<style>
+:root{ --accent:#34d3c0; --accent-dim:rgba(52,211,192,.12); --bg:#0a0c0a; --panel:#11150f; --bd:#20281e; --dim:#8a9686; --txt:#cfd6cd; }
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; background:var(--bg); }
+body{ color:var(--txt); font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace; padding-bottom:28px; }
+a{ color:inherit; text-decoration:none; } button{ font-family:inherit; }
+.wrap{ max-width:none; margin:0; padding:18px 22px 0; display:flex; flex-direction:column; gap:14px; }
+header{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; border-bottom:1px solid #1c241c; }
+.brand{ display:flex; align-items:center; gap:13px; font-weight:700; font-size:16px; color:#e8efe2; }
+.logo{ width:34px; height:34px; border-radius:8px; background:#10140f; border:1px solid #283226; display:flex; align-items:center; justify-content:center; position:relative; }
+.logo i{ width:15px; height:15px; border-radius:50%; border:2px solid var(--accent); }
+.logo b{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+.chips{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.chip{ background:#10140f; border:1px solid #243024; border-radius:999px; padding:6px 12px; font-size:11.5px; color:var(--dim); }
+.chip.ok{ color:#aeb6a8; display:flex; align-items:center; gap:7px; }
+.chip.warn{ color:#f0c45a; border-color:rgba(240,180,60,.35); }
+#batt-chip{ display:inline-flex; align-items:center; }   /* #PWR-8: раньше inline gap:6px не работал без flex — иконка наезжала на цифры */
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+.dot.off{ background:#5b655a; box-shadow:none; }
+nav{ display:flex; align-items:center; gap:2px; padding:0 20px; border-bottom:1px solid #1c241c; overflow-x:auto; }
+nav a,nav span{ padding:12px 16px; font-size:13px; color:var(--dim); flex-shrink:0; white-space:nowrap; }
+nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); }
+.panel{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; padding:16px; }
+.mut{ color:#6b756a; }
+.ttl{ font-size:14px; font-weight:600; color:#e8efe2; margin-bottom:13px; display:flex; align-items:center; gap:8px; }
+.grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; }
+.grid-3{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.kv{ display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid #161c15; font-size:12.5px; }
+.kv span:first-child{ color:#7c887c; } .kv span:last-child{ color:#dfe5dc; text-align:right; font-variant-numeric:tabular-nums; }
+.btn{ border-radius:8px; padding:9px 14px; font-size:12.5px; cursor:pointer; background:#161b14; border:1px solid #2a322a; color:var(--txt); }
+.btn.green{ background:var(--accent-dim); border-color:rgba(52,211,192,.4); color:var(--accent); font-weight:600; }
+.btn.red{ background:rgba(240,90,80,.07); border-color:rgba(240,90,80,.4); color:#ff8a82; }
+.btn:hover{ filter:brightness(1.2); } .btn:disabled{ opacity:.45; cursor:default; filter:none; }
+.chip.lang{ cursor:pointer; color:var(--accent); border-color:rgba(52,211,192,.4); font-weight:600; padding:3px 8px; font-size:10.5px; line-height:1.2; min-width:28px; text-align:center; }
+.chip.lang:hover{ filter:brightness(1.15); }
+.xu{ background:#10140f; border:1px solid #243024; border-radius:6px; padding:3px 9px; font-size:11px; font-weight:400; color:var(--dim); cursor:pointer; }
+.xu.on{ color:var(--accent); border-color:rgba(52,211,192,.4); font-weight:600; }
+.xu:hover{ filter:brightness(1.2); }
+.ctl{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.ctl label{ font-size:12px; color:#8a9686; display:flex; align-items:center; gap:8px; }
+.ctl input[type=number]{ width:90px; background:#0d110c; color:var(--txt); border:1px solid #2a322a; padding:6px 8px; border-radius:6px; font-family:inherit; font-size:12.5px; }
+.big{ font-size:30px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; line-height:1.1; }
+.big small{ font-size:13px; font-weight:400; color:#6b756a; }
+.live-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:#5b655a; margin-right:7px; vertical-align:middle; }
+.live-dot.rec{ background:#ff5a50; box-shadow:0 0 8px #ff5a50; animation:pulse 1.4s ease-in-out infinite; }
+@keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.35} }
+table.mon{ border-collapse:collapse; width:100%; font-size:12px; font-variant-numeric:tabular-nums; }
+table.mon th,table.mon td{ border-bottom:1px solid #1b211a; padding:7px 9px; text-align:right; color:#cfd6cd; white-space:nowrap; }
+table.mon th{ color:var(--accent); font-weight:600; font-size:11px; position:sticky; top:0; background:var(--panel); }
+table.mon td:first-child,table.mon th:first-child{ text-align:left; color:#8a9686; }
+.twrap{ max-height:340px; overflow:auto; border:1px solid var(--bd); border-radius:8px; }
+canvas{ width:100%; height:auto; display:block; }
+</style>
+</head>
+<body>
+<header>
+<div class="brand"><span class="logo"><i></i><b></b></span>AtomSpectra <span style="color:var(--accent)">&nbsp;Gateway</span></div>
+<div class="chips"><span class="chip ok" id="dev-chip" style="visibility:hidden"><span class="dot" id="dev-dot"></span><span id="dev-stat">—</span></span><span class="chip" id="batt-chip" title="Battery" style="cursor:default;display:none;gap:6px"><span id="batt-icon" style="display:inline-block;width:18px;height:10px;border:1.4px solid #8a9686;border-radius:2px;position:relative;vertical-align:middle;margin-right:2px"><span id="batt-fill" style="display:block;height:100%;width:0%;background:#34d3c0;border-radius:1px"></span><span style="position:absolute;right:-4px;top:2.5px;width:2px;height:4px;background:#8a9686;border-radius:0 1px 1px 0"></span></span><span id="batt-pct">—%</span></span><span class="chip lang" id="langBtn">EN</span></div>
+</header>
+<nav>
+<a href="/" data-i18n="nav.spectrum">Спектр</a>
+<a href="/waterfall" data-i18n="nav.waterfall">Водопад</a>
+<span class="on" data-i18n="nav.monitor">Мониторинг</span>
+<a href="/saved" data-i18n="nav.saved">Файлы</a>
+<a href="/system" data-i18n="nav.system">Система</a>
+<a href="/service" data-i18n="nav.service">Сервис</a>
+</nav>
+
+<div class="wrap">
+
+<section class="panel">
+<div class="ctl">
+<label><span data-i18n="ctl.interval">Интервал усреднения, с</span>
+<input type="number" id="interval" min="1" max="86400" step="1" value="1"></label>
+<button class="btn green" id="startBtn" onclick="toggleRun()" data-i18n="ctl.start">Старт</button>
+<button class="btn" id="clearBtn" onclick="clearData()" data-i18n="ctl.clear">Очистить</button>
+<button class="btn" id="csvBtn" onclick="exportCsv()" data-i18n="ctl.csv">Выгрузить CSV</button>
+<span class="mut" id="run-stat" style="font-size:11.5px"></span>
+</div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:#8a9686">
+ <span>Префикс файлов:</span>
+ <input type="text" id="fx-prefix" maxlength="23" spellcheck="false" autocomplete="off" placeholder="MY1" title="Добавляется в начало имени всех выгрузок этой платы. Латиница, цифры, _ и -." style="width:110px;background:#11150f;color:#cfd6cd;border:1px solid #444;padding:4px 7px;border-radius:4px;font-family:inherit;font-size:12px">
+ <button type="button" onclick="savePrefix()" style="cursor:pointer;background:rgba(52,211,192,.12);border:1px solid rgba(52,211,192,.4);color:#34d3c0;border-radius:6px;padding:5px 12px;font-family:inherit;font-size:12px;font-weight:600">Сохранить</button>
+ <span id="fx-prefix-st" style="min-width:16px;font-size:14px"></span>
+</div>
+</section>
+
+<div class="grid-3">
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9673;</span> <span data-i18n="live.title">Текущий CPS</span></div>
+<div class="big"><span id="live-cps">—</span> <small>cps</small></div>
+<div class="mut" style="font-size:11px;margin-top:6px" data-i18n="live.hint">мгновенное значение с прибора</div>
+<div class="kv" style="margin-top:8px"><span data-i18n="live.total">Всего импульсов</span><span id="live-total">—</span></div>
+<div class="kv"><span data-i18n="live.devtime">Время набора, с</span><span id="live-time">—</span></div>
+</section>
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#8721;</span> <span data-i18n="avg.title">Средний CPS (сессия)</span></div>
+<div class="big"><span id="grand-cps">—</span> <small>cps</small></div>
+<div class="mut" style="font-size:11px;margin-top:6px"><span data-i18n="avg.rel">отн. погрешность</span> <span id="grand-rel">—</span></div>
+<div class="kv" style="margin-top:8px"><span data-i18n="avg.samples">Отсчётов</span><span id="n-samples">0</span></div>
+<div class="kv"><span data-i18n="avg.counts">Импульсов в сессии</span><span id="sess-counts">0</span></div>
+<div class="kv"><span data-i18n="avg.dur">Длит. сессии, с</span><span id="sess-dur">0</span></div>
+</section>
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9202;</span> <span data-i18n="last.title">Последний интервал</span></div>
+<div class="big"><span id="last-cps">—</span> <small>cps</small></div>
+<div class="mut" style="font-size:11px;margin-top:6px"><span data-i18n="avg.rel">отн. погрешность</span> <span id="last-rel">—</span></div>
+<div class="kv" style="margin-top:8px"><span data-i18n="last.counts">Импульсов</span><span id="last-counts">—</span></div>
+<div class="kv"><span data-i18n="last.dur">Длит., с</span><span id="last-dur">—</span></div>
+</section>
+</div>
+
+<section class="panel">
+<div class="ttl" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+<span><span style="color:var(--accent)">&#8961;</span> <span data-i18n="chart.title">CPS по интервалам</span></span>
+<span class="mut" style="font-size:11px"><span style="color:var(--accent)">&#9644;</span> <span id="raw-lbl">CPS за 1 с</span>&nbsp;&nbsp;<span style="color:#ff8c1a">&#9644;</span> SMA</span>
+<span class="mut" style="font-size:11px;display:flex;align-items:center;gap:5px"><span data-i18n="chart.xunit">Шкала X:</span>
+<button class="xu on" id="xu-auto" onclick="setXUnit('auto')" data-i18n="chart.xu.auto">авто</button>
+<button class="xu" id="xu-s" onclick="setXUnit('s')" data-i18n="chart.xu.s">с</button>
+<button class="xu" id="xu-m" onclick="setXUnit('m')" data-i18n="chart.xu.m">м</button>
+<button class="xu" id="xu-h" onclick="setXUnit('h')" data-i18n="chart.xu.h">ч</button>
+</span>
+<label class="mut" style="font-size:11px;margin-left:auto;display:flex;align-items:center;gap:8px"><span data-i18n="chart.smaWin">Окно SMA, отсчётов</span>
+<input type="number" id="smaWin" min="2" max="200" step="1" value="10" oninput="onSmaInput()" style="width:64px;background:#0d110c;color:var(--txt);border:1px solid #2a322a;padding:4px 8px;border-radius:6px;font-family:inherit;font-size:12px"></label>
+</div>
+<canvas id="chart" width="1400" height="300"></canvas>
+</section>
+
+<section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9776;</span> <span data-i18n="tbl.title">Отсчёты мониторинга</span></div>
+<div class="twrap">
+<table class="mon">
+<thead><tr>
+<th data-i18n="tbl.ts">Время</th>
+<th data-i18n="tbl.dur">Δt, с</th>
+<th data-i18n="tbl.counts">Импульсы</th>
+<th data-i18n="tbl.cps">CPS</th>
+<th data-i18n="tbl.rel">δ, %</th>
+</tr></thead>
+<tbody id="tbody"></tbody>
+</table>
+</div>
+</section>
+
+</div>
+
+<script>
+"use strict";
+var DICT={
+ ru:{
+  "page.title":"AtomSpectra · Мониторинг","device":"Прибор",
+  "nav.spectrum":"Спектр","nav.waterfall":"Водопад","nav.monitor":"Мониторинг","nav.saved":"Файлы","nav.system":"Система","nav.service":"Сервис",
+  "dev.chipOk":"Спектрометр подключен","dev.chipOff":"Спектрометр отключен",
+  "ctl.interval":"Интервал усреднения, с","ctl.start":"Старт","ctl.stop":"Стоп","ctl.clear":"Очистить","ctl.csv":"Выгрузить CSV",
+  "run.idle":"остановлено","run.rec":"идёт запись · собрано %1","run.sd":" · пишется на SD-карту платы","run.wait":"ожидание набора прибором…","run.paused":"прибор не набирает (время не идёт)","run.cleared":"спектр очищен на приборе — якорь сброшен",
+  "live.title":"Текущий CPS","live.hint":"мгновенное значение с прибора","live.total":"Всего импульсов","live.devtime":"Время набора, с",
+  "avg.title":"Средний CPS (сессия)","avg.rel":"отн. погрешность","avg.samples":"Отсчётов","avg.counts":"Импульсов в сессии","avg.dur":"Длит. сессии, с",
+  "last.title":"Последний интервал","last.counts":"Импульсов","last.dur":"Длит., с",
+  "chart.title":"CPS по интервалам","chart.raw":"CPS за %1 с","chart.smaWin":"Окно SMA, отсчётов",
+  "chart.xunit":"Шкала X:","chart.xu.auto":"авто","chart.xu.s":"с","chart.xu.m":"м","chart.xu.h":"ч",
+  "chart.zoomHint":"зум ×%1 · 2× клик — сброс",
+  "tbl.title":"Отсчёты мониторинга","tbl.ts":"Время","tbl.dur":"Δt, с","tbl.counts":"Импульсы","tbl.cps":"CPS","tbl.sig":"σ, cps","tbl.rel":"δ, %",
+  "csv.empty":"Нет данных для выгрузки",
+  "confirm.clear":"Очистить все накопленные отсчёты мониторинга?"
+ },
+ en:{
+  "page.title":"AtomSpectra · Monitoring","device":"Device",
+  "nav.spectrum":"Spectrum","nav.waterfall":"Waterfall","nav.monitor":"Monitoring","nav.saved":"Files","nav.system":"System","nav.service":"Service",
+  "dev.chipOk":"Spectrometer connected","dev.chipOff":"Spectrometer disconnected",
+  "ctl.interval":"Averaging interval, s","ctl.start":"Start","ctl.stop":"Stop","ctl.clear":"Clear","ctl.csv":"Export CSV",
+  "run.idle":"stopped","run.rec":"recording · %1 collected","run.sd":" · logging to board SD card","run.wait":"waiting for device acquisition…","run.paused":"device not acquiring (time frozen)","run.cleared":"spectrum cleared on device — anchor reset",
+  "live.title":"Current CPS","live.hint":"instantaneous value from device","live.total":"Total counts","live.devtime":"Acquisition time, s",
+  "avg.title":"Mean CPS (session)","avg.rel":"relative error","avg.samples":"Samples","avg.counts":"Counts in session","avg.dur":"Session duration, s",
+  "last.title":"Last interval","last.counts":"Counts","last.dur":"Duration, s",
+  "chart.title":"CPS per interval","chart.raw":"CPS per %1 s","chart.smaWin":"SMA window, samples",
+  "chart.xunit":"X scale:","chart.xu.auto":"auto","chart.xu.s":"s","chart.xu.m":"m","chart.xu.h":"h",
+  "chart.zoomHint":"zoom ×%1 · dbl-click — reset",
+  "tbl.title":"Monitoring samples","tbl.ts":"Time","tbl.dur":"Δt, s","tbl.counts":"Counts","tbl.cps":"CPS","tbl.sig":"σ, cps","tbl.rel":"δ, %",
+  "csv.empty":"No data to export",
+  "confirm.clear":"Clear all accumulated monitoring samples?"
+ }
+};
+var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
+function t(k){var d=DICT[LANG]||DICT.ru;return(d[k]!==undefined)?d[k]:(DICT.ru[k]||k);}
+function tfmt(k){var s=t(k);for(var i=1;i<arguments.length;i++)s=s.replace("%"+i,arguments[i]);return s;}
+function applyI18n(){
+ document.querySelectorAll("[data-i18n]").forEach(function(el){ el.textContent=t(el.getAttribute("data-i18n")); });
+ document.documentElement.lang=LANG;
+ var b=document.getElementById("langBtn"); if(b)b.textContent=(LANG==="ru")?"EN":"RU";
+ renderRawLbl();   // #MON-6
+}
+function setLang(l){ if(l!=="ru"&&l!=="en")l="ru"; LANG=l; try{localStorage.setItem("aswf-lang",l);}catch(e){} applyI18n(); renderStartBtn(); renderStatus(); try{drawChart();}catch(e){} }
+
+function ac(){return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#34d3c0';}
+
+// --- Форматирование чисел ---
+function fmtCps(v){ if(!isFinite(v))return "—"; if(v>=100)return v.toFixed(1); if(v>=1)return v.toFixed(3); return v.toFixed(4); }
+function pad2(n){return (n<10?"0":"")+n;}
+// #UI-38: часовой пояс — настройка «Система → Часовой пояс» (localStorage aswf-tz):
+// "auto" = пояс браузера, иначе смещение от UTC в минутах (напр. "180" = UTC+03:00).
+function tzMode(){try{return localStorage.getItem("aswf-tz")||"auto";}catch(e){return"auto";}}
+function tzShift(d){ // Date, локальные getters которого дают время в выбранном поясе
+ var m=tzMode(); if(m==="auto")return d;
+ var off=parseInt(m,10); if(!isFinite(off))return d;
+ return new Date(d.getTime()+(off+d.getTimezoneOffset())*60000);
+}
+function tzOffMin(){ var m=tzMode(); if(m!=="auto"){var o=parseInt(m,10); if(isFinite(o))return o;} return -new Date().getTimezoneOffset(); }
+function tzLabel(){ var o=tzOffMin(), s=o<0?"-":"+", a=Math.abs(o); return "UTC"+s+pad2(Math.floor(a/60))+":"+pad2(a%60); }
+function hms(d){d=tzShift(d);return pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds());}
+function isoLocal(d){ // время в выбранном поясе, ISO без TZ-суффикса (для CSV/Excel)
+ d=tzShift(d);
+ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds());
+}
+
+// --- Состояние мониторинга ---
+// #MON-1: сбор серии перенесён на плату. Плата копит базовые 1с-сэмплы
+// (дельты по коммитам свипов) в кольце PSRAM (6 ч) с монотонным seq; клиент
+// раз в 2 с тянет хвост GET /api/monitor/series?since=<seq> и агрегирует
+// базовые сэмплы в вёдра по «интервалу усреднения». Фоновая/закрытая вкладка
+// больше не портит данные: после F5/фона клиент ДОТЯГИВАЕТ пропущенное по seq.
+// #MON-2: СЕССИЯ (Старт/Стоп/Очистить, интервал, окно SMA) живёт на плате и
+// общая для всех браузеров и экрана платы; приходит в каждом ответе серии
+// ("sess"). Идентичность сессии — пара epoch:rev: увидели другую — выбрасываем
+// свои вёдра и перестраиваем с sess.start. Стоп rev не меняет (сессия та же,
+// заморожена на sess.stop). localStorage для сессии больше не используется.
+var running=false;
+var samples=[];              // вёдра-агрегаты: {ts:Date, devStart, devEnd, dur, counts, cps, sig, rel}
+var bucket=null;             // накапливаемое ведро из базовых сэмплов (Σdur < интервала)
+var sessCounts=0, sessDur=0; // накопители сессии (по закрытым вёдрам)
+var noteCleared=false;
+
+var boardEpoch=null;         // epoch серии платы (меняется при сбросе спектра/прибора и перезапуске платы)
+var sess=null;               // сессия платы из последнего ответа: {rev,run,start,stop,iv,sma}
+var sessKey=null;            // "epoch:rev" сессии, по которой построены вёдра
+var lastSeq=0;               // последний обработанный seq базового сэмпла
+// Запасная привязка к стене — только если часы платы не выставлены (wall=0):
+// сэмпл с end_sec=anchorEnd пришёл в anchorWall (мс).
+var anchorWall=0, anchorEnd=0;
+var sdLog=false;             // #SD-3: плата пишет сессию на SD-карту
+
+function wipeView(){
+ samples=[]; bucket=null; sessCounts=0; sessDur=0;
+ var tb=document.getElementById("tbody"); if(tb)tb.innerHTML="";
+}
+
+// Принять сессию платы из ответа серии. true — сессия СМЕНИЛАСЬ (вёдра сброшены,
+// lastSeq переставлен на её начало — ответ, в котором она пришла, не годится).
+function adoptSess(r){
+ var s=r.sess; if(!s)return false;
+ var key=r.epoch+":"+s.rev, wasRun=running, wasIv=sess?sess.iv:null, wasSma=sess?sess.sma:null;
+ var changed=(key!==sessKey);
+ var epochChanged=(boardEpoch!==null&&r.epoch!==boardEpoch);
+ sess=s; running=!!s.run;
+ if(changed){
+  sessKey=key; boardEpoch=r.epoch;
+  wipeView();
+  noteCleared=epochChanged&&running;       // спектр сброшен на приборе — запись идёт с нового места
+  lastSeq=(s.start>0)?s.start-1:r.next_seq-1;
+  renderAggregates(); drawChart();
+ }
+ if(changed||wasRun!==running||wasIv!==s.iv){
+  var ii=document.getElementById("interval");
+  if(ii&&(running||document.activeElement!==ii))ii.value=s.iv;
+  renderRawLbl();
+  renderStartBtn(); renderStatus();
+ }
+ var sw=document.getElementById("smaWin");
+ if(wasSma!==s.sma&&sw&&document.activeElement!==sw){ sw.value=s.sma; if(!changed)drawChart(); }
+ return changed;
+}
+
+async function postSess(body){
+ try{
+  var c=await(await fetch("/api/csrf-token")).json();
+  var r=await fetch("/api/monitor/session",{method:"POST",headers:{"X-CSRF-Token":c.token||"","Content-Type":"application/json"},body:JSON.stringify(body)});
+  return r.ok;
+ }catch(e){ return false; }
+}
+async function toggleRun(){
+ // Старт: сессия = сэмплы платы с текущего next_seq. Стоп замораживает её на
+ // последнем сэмпле платы; недобранное ведро отбрасывается.
+ var b=document.getElementById("startBtn"); if(b)b.disabled=true;
+ await postSess(running?{action:"stop"}:{action:"start",interval:intervalSec()});
+ if(b)b.disabled=false;
+ await syncSeries();
+}
+async function clearData(){
+ if(samples.length && !confirm(t("confirm.clear")))return;
+ await postSess({action:"clear"});
+ await syncSeries();
+}
+var smaTimer=null;
+function smaWin(){ var e=document.getElementById("smaWin"), v=parseInt(e?e.value:10,10); if(!(v>=2))v=2; if(v>200)v=200; return v; }
+function onSmaInput(){
+ drawChart();
+ clearTimeout(smaTimer);
+ smaTimer=setTimeout(function(){ postSess({sma:smaWin()}); },500);
+}
+function renderStartBtn(){
+ var b=document.getElementById("startBtn");
+ b.textContent=running?t("ctl.stop"):t("ctl.start");
+ b.classList.toggle("green",!running);
+ b.classList.toggle("red",running);
+ document.getElementById("interval").disabled=running;
+}
+function renderStatus(){
+ var s=document.getElementById("run-stat");
+ var dot='<span class="live-dot'+(running?' rec':'')+'"></span>';
+ if(!running){ s.innerHTML=dot+t("run.idle"); return; }
+ if(noteCleared){ s.innerHTML=dot+t("run.cleared"); return; }
+ s.innerHTML=dot+tfmt("run.rec",samples.length)+(sdLog?t("run.sd"):"");
+}
+
+function intervalSec(){ var v=parseInt(document.getElementById("interval").value,10); return (isFinite(v)&&v>=1)?v:1; }   /* #MON-3: по умолчанию 1 с */
+// #MON-6 (запрос 2026-10-07): подпись линии по интервалам — «CPS за N с», N — интервал
+// сессии платы (общий с дисплеем, #MON-2); было «сырые»/raw.
+function renderRawLbl(){ var e=document.getElementById("raw-lbl"); if(e)e.textContent=tfmt("chart.raw",sessIv()); }
+function sessIv(){ return (sess&&sess.iv>=1)?sess.iv:intervalSec(); }
+
+// --- Живая панель (#MON-1): лёгкий опрос /api/spectrum.json ТОЛЬКО для плиток
+// «Текущий CPS / Всего импульсов / Время набора». Статус прибора в шапке
+// отдельно — см. updateStatusChips() (авторитетный r.usb_connected из
+// /api/system, а не догадка по наличию total). Сбор серии идёт отдельно
+// (syncSeries) — троттлинг фоновой вкладки этому не вредит. ---
+async function livePoll(){
+ var r;
+ try{ r=await(await fetch("/api/spectrum.json",{cache:"no-store"})).json(); }
+ catch(e){ return; }
+ var total=(typeof r.total==="number")?r.total:null;
+ var time =(typeof r.time ==="number")?r.time :null;
+ var cps  =(typeof r.cps  ==="number")?r.cps  :null;
+ if(cps!==null)  document.getElementById("live-cps").textContent=fmtCps(cps);
+ if(total!==null)document.getElementById("live-total").textContent=total.toLocaleString("ru-RU");
+ if(time!==null) document.getElementById("live-time").textContent=time.toLocaleString("ru-RU");
+}
+
+// #DEV-1 (debug fix): раньше статус спектрометра в шапке определялся косвенно —
+// по наличию поля total в /api/spectrum.json, что не отражало реальное
+// подключение (напр. оставалось "подключено" со старым total, если чтение
+// спектра просто зависало). Теперь используем тот же авторитетный флаг
+// usb_connected из /api/system, что и на страницах Сервис/Система.
+async function updateStatusChips(){
+ try{
+  var r=await(await fetch("/api/system")).json();
+  var devDot=document.getElementById("dev-dot"), devStat=document.getElementById("dev-stat"), devChip=document.getElementById("dev-chip");
+  if(devChip)devChip.style.visibility="";
+  if(r.usb_connected){
+   devDot.classList.remove("off"); devStat.textContent=t("dev.chipOk");
+   if(devChip){devChip.classList.remove("warn"); devChip.classList.add("ok");}
+  }else{
+   devDot.classList.add("off"); devStat.textContent=t("dev.chipOff");
+   if(devChip){devChip.classList.add("warn"); devChip.classList.remove("ok");}
+  }
+  var bc=document.getElementById("batt-chip");
+  if(!bc)return;
+  if(r.batt_present){
+   bc.style.display="";
+   var bpct=(typeof r.batt_percent==="number")?Math.max(0,Math.min(100,Math.round(r.batt_percent))):0;
+   var fillEl=document.getElementById("batt-fill");
+   if(fillEl){fillEl.style.width=bpct+"%";fillEl.style.background=bpct<20?"#ff8a82":bpct<50?"#f0c45a":"#34d3c0";}
+   var pctEl=document.getElementById("batt-pct");
+   if(pctEl)pctEl.textContent=(r.batt_charging?"\u26a1":"")+bpct+"%";
+   var vTxt=(typeof r.batt_voltage==="number")?r.batt_voltage.toFixed(2)+"V":"";
+   bc.title="Battery: "+vTxt+(r.batt_charging?" \u00b7 charging":r.batt_chg_done?" \u00b7 charged":"");
+  } else {
+   bc.style.display="none";
+  }
+ }catch(e){}
+}
+
+// --- Сбор серии с платы (#MON-1, #MON-2) ---
+// Базовый сэмпл → ведро. Вёдра по НАКОПЛЕННОМУ наборному времени прибора
+// (dead-time-корректно): копим подряд идущие сэмплы, пока Σdur < интервала
+// усреднения сессии, затем закрываем. cps=ΣN/Σt, σ=√ΣN/Σt (Poisson), δ%=100/√ΣN.
+// wall — настенное время сэмпла от платы (одно на всех клиентов; 0 — часы не выставлены).
+function pushBase(end,dur,cnt,wall){
+ if(!bucket)bucket={devStart:end-dur,devEnd:end,dur:0,counts:0,wall:0};
+ bucket.dur+=dur; bucket.counts+=cnt; bucket.devEnd=end; bucket.wall=wall||0;
+ if(bucket.dur>=sessIv())closeBucket();
+}
+function closeBucket(){
+ var b=bucket; bucket=null;
+ if(!b||b.dur<=0)return;
+ var cps=b.counts/b.dur;
+ var sig=Math.sqrt(Math.max(b.counts,0))/b.dur;
+ var rel=(b.counts>0)?(100/Math.sqrt(b.counts)):NaN;
+ var ts=new Date(b.wall>0?b.wall*1000:(anchorWall>0?(anchorWall-(anchorEnd-b.devEnd)*1000):Date.now()));
+ var smp={ts:ts,devStart:b.devStart,devEnd:b.devEnd,dur:b.dur,counts:b.counts,cps:cps,sig:sig,rel:rel};
+ samples.push(smp);
+ sessCounts+=b.counts; sessDur+=b.dur;
+ noteCleared=false;
+ appendRow(smp);
+}
+
+var syncBusy=false;
+async function syncSeries(){
+ if(syncBusy)return; syncBusy=true;
+ var pend=[], s;
+ try{
+  for(var hop=0;hop<400;hop++){          // догоняем плату циклом: чанк платы <= 2000 сэмплов
+   // Собирать нечего (нет сессии / замороженная уже построена) — только зондируем
+   // курсоры и сессию: since за пределом серии даёт пустой samples (дёшево).
+   s=sess;
+   var collecting=!!(s&&s.start>0&&(s.run||lastSeq<s.stop));
+   var r=await(await fetch("/api/monitor/series?since="+(collecting?lastSeq:4294967294),{cache:"no-store"})).json();
+   if(!r||typeof r.next_seq!=="number"||!r.sess)break;
+   if(r.sd_log!==sdLog){ sdLog=!!r.sd_log; renderStatus(); }
+   if(adoptSess(r)){ pend=[]; continue; }  // новая сессия — перезапросить с её начала
+   s=sess;
+   if(!(s.start>0))break;
+   var lim=s.run?Infinity:s.stop, arr=r.samples||[], f=r.first_seq, done=false;
+   for(var i=0;i<arr.length;i++){
+    var seq=f+i;
+    if(seq<=lastSeq)continue;                  // дубль/перекрытие запросов
+    if(seq>lim){ done=true; break; }           // хвост за Стопом — не наш
+    lastSeq=seq;
+    pend.push(arr[i]);
+   }
+   if(!s.run&&(lastSeq>=s.stop||f>s.stop))done=true;   // заморожена: построена (или вытеснена из кольца)
+   if(done||lastSeq+1>=r.next_seq)break;               // догнали хвост серии
+  }
+ }catch(e){ /* сеть/плата недоступна — дотянем следующим тиком */ }
+ if(pend.length){
+  anchorEnd=pend[pend.length-1][0]; anchorWall=Date.now();
+  for(var k=0;k<pend.length;k++)pushBase(pend[k][0],pend[k][1],pend[k][2],pend[k][3]);
+ }
+ if(sess&&!sess.run)bucket=null;   // как Стоп: недобранное ведро отбрасываем
+ if(pend.length){ renderAggregates(); drawChart(); renderStatus(); }
+ syncBusy=false;
+}
+
+function appendRow(s){
+ var tb=document.getElementById("tbody");
+ var tr=document.createElement("tr");
+ tr.innerHTML="<td>"+hms(s.ts)+"</td><td>"+s.dur+"</td><td>"+s.counts.toLocaleString("ru-RU")+"</td><td>"+fmtCps(s.cps)+"</td><td>"+(isFinite(s.rel)?s.rel.toFixed(2):"—")+"</td>";
+ tb.insertBefore(tr,tb.firstChild); // новые сверху
+ while(tb.children.length>500) tb.removeChild(tb.lastChild);
+}
+function renderAggregates(){
+ document.getElementById("n-samples").textContent=samples.length;
+ document.getElementById("sess-counts").textContent=sessCounts.toLocaleString("ru-RU");
+ document.getElementById("sess-dur").textContent=sessDur.toLocaleString("ru-RU");
+ if(sessDur>0){
+  var g=sessCounts/sessDur, gr=(sessCounts>0)?100/Math.sqrt(sessCounts):NaN;
+  document.getElementById("grand-cps").textContent=fmtCps(g);
+  document.getElementById("grand-rel").textContent=isFinite(gr)?gr.toFixed(2)+" %":"—";
+ }else{
+  document.getElementById("grand-cps").textContent="—";
+  document.getElementById("grand-rel").textContent="—";
+ }
+ if(samples.length){
+  var l=samples[samples.length-1];
+  document.getElementById("last-cps").textContent=fmtCps(l.cps);
+  document.getElementById("last-rel").textContent=isFinite(l.rel)?l.rel.toFixed(2)+" %":"—";
+  document.getElementById("last-counts").textContent=l.counts.toLocaleString("ru-RU");
+  document.getElementById("last-dur").textContent=l.dur;
+ }
+}
+
+var SMA_COL="#ff8c1a";
+var DEF_VIEW=200;
+// Состояние масштаба графика: cnt = сколько интервалов видно; end = индекс правого края (null → следовать за последними)
+var chartView={cnt:null, end:null};
+function clampNum(v,lo,hi){ return v<lo?lo:(v>hi?hi:v); }
+
+// #UI-38: единица тик-сетки оси X: auto | s | m | h (persist в localStorage)
+var XUNIT=(function(){try{return localStorage.getItem("aswf-mon-xunit")||"auto";}catch(e){return"auto";}})();
+function setXUnit(u){ XUNIT=u; try{localStorage.setItem("aswf-mon-xunit",u);}catch(e){} renderXUnit(); drawChart(); }
+function renderXUnit(){ ["auto","s","m","h"].forEach(function(u){ var b=document.getElementById("xu-"+u); if(b)b.classList.toggle("on",XUNIT===u); }); }
+function xTickStep(spanMs,unit){ // шаг тиков (мс): единица = плотность оси (с — гуще, ч — реже), реальное время
+ var k=unit==="s"?15:unit==="m"?8:unit==="h"?4:6; // целевое число тиков ≈ span/k
+ var base=1000, m=[1,2,5,10,15,30,60,120,300,600,900,1800,3600,7200,10800,21600,43200,86400,172800,604800];
+ var target=spanMs/k, i;
+ for(i=0;i<m.length;i++)if(base*m[i]>=target)return base*m[i];
+ return base*m[m.length-1];
+}
+function xTickLabel(tm,stepMs,spanMs){
+ var d=tzShift(new Date(tm));
+ var s=pad2(d.getHours())+":"+pad2(d.getMinutes());
+ if(stepMs<60000)s+=":"+pad2(d.getSeconds());
+ if(spanMs>=86400000)s=pad2(d.getDate())+"."+pad2(d.getMonth()+1)+" "+s;
+ return s;
+}
+
+function drawChart(){
+ var cv=document.getElementById("chart"); if(!cv)return;
+ wireChartZoom(cv);
+ var ctx=cv.getContext("2d"), W=cv.width, H=cv.height;
+ ctx.clearRect(0,0,W,H);
+ var padL=64,padR=16,padT=14,padB=26;
+ var x0=padL,x1=W-padR,y0=padT,y1=H-padB;
+ // Сетка-рамка
+ ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
+ ctx.strokeRect(x0,y0,x1-x0,y1-y0);
+ var N=samples.length, i;
+ if(N<1)return;
+ // SMA по всему массиву (trailing, окно = win интервалов) — считаем до вырезки окна, чтобы край окна был корректным
+ var win=smaWin();
+ var smaAll=[],acc=0;
+ for(i=0;i<N;i++){ acc+=samples[i].cps; if(i>=win)acc-=samples[i-win].cps; smaAll.push(acc/Math.min(i+1,win)); }
+ // Окно просмотра
+ var cnt=chartView.cnt==null ? Math.min(DEF_VIEW,N) : clampNum(chartView.cnt,2,N);
+ var endIdx=chartView.end==null ? N : clampNum(chartView.end,cnt,N); // exclusive
+ var startIdx=Math.max(0,endIdx-cnt);
+ var data=samples.slice(startIdx,endIdx);
+ var sma=smaAll.slice(startIdx,endIdx);
+ chartView._start=startIdx; chartView._cnt=cnt; chartView._plotW=x1-x0; // для обработчиков
+ var mn=1e30,mx=-1e30;
+ for(i=0;i<data.length;i++){ var v=data[i].cps; if(v<mn)mn=v; if(v>mx)mx=v; }
+ for(i=0;i<sma.length;i++){ if(sma[i]<mn)mn=sma[i]; if(sma[i]>mx)mx=sma[i]; }
+ if(mx-mn<1e-9)mx=mn+1;
+ var padY=(mx-mn)*0.08; mn-=padY; mx+=padY;
+ var col=ac();
+ // #UI-38: ось X — реальное время; позиция точки пропорциональна её timestamp
+ var t0=data[0].ts.getTime(), tN=data[data.length-1].ts.getTime(), span=tN-t0;
+ function pxT(tm){ return x0+(x1-x0)*(tm-t0)/span; }
+ function px(idx){
+  if(span>0)return pxT(data[idx].ts.getTime());
+  return data.length>1 ? x0+(x1-x0)*idx/(data.length-1) : (x0+x1)/2;
+ }
+ function py(v){ return y1-(y1-y0)*(v-mn)/(mx-mn); }
+ // Y-подписи
+ ctx.fillStyle="#6b756a"; ctx.font="11px ui-monospace,monospace"; ctx.textAlign="right"; ctx.textBaseline="middle";
+ for(var g=0;g<=4;g++){ var vv=mn+(mx-mn)*g/4, yy=py(vv);
+  ctx.strokeStyle="rgba(255,255,255,.04)"; ctx.beginPath(); ctx.moveTo(x0,yy); ctx.lineTo(x1,yy); ctx.stroke();
+  ctx.fillText(fmtCps(vv),x0-6,yy); }
+ // #UI-38: тики оси X — реальное время в выбранном поясе, шаг по XUNIT (авто/с/м/ч)
+ if(span>0){
+  var step=xTickStep(span,XUNIT);
+  var sh=tzOffMin()*60000;                  // выравнивание тиков на круглое время пояса
+  var tick0=Math.ceil((t0+sh)/step)*step-sh;
+  ctx.textAlign="center"; ctx.textBaseline="top"; ctx.font="10px ui-monospace,monospace";
+  for(var tm=tick0;tm<=tN;tm+=step){
+   var tx=pxT(tm);
+   ctx.strokeStyle="rgba(255,255,255,.05)"; ctx.beginPath(); ctx.moveTo(tx,y0); ctx.lineTo(tx,y1); ctx.stroke();
+   ctx.fillStyle="#6b756a"; ctx.fillText(xTickLabel(tm,step,span),tx,y1+5);
+  }
+ }
+ // Сырая линия по интервалам (акцент)
+ // #MON-3: сырая линия — толщиной как SMA, без точек на вершинах (запрос 2026-09-29)
+ ctx.strokeStyle=col; ctx.lineWidth=2.4; ctx.beginPath();
+ for(i=0;i<data.length;i++){ var xx=px(i), yv=py(data[i].cps); i?ctx.lineTo(xx,yv):ctx.moveTo(xx,yv); }
+ ctx.stroke();
+ // SMA — оранжевым, поверх
+ ctx.strokeStyle=SMA_COL; ctx.lineWidth=2.4; ctx.beginPath();
+ for(i=0;i<sma.length;i++){ var sx=px(i), sy=py(sma[i]); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy); }
+ ctx.stroke();
+ // Индикатор зума (когда не в авто-режиме)
+ if(chartView.cnt!=null || chartView.end!=null){
+  ctx.fillStyle="#6b756a"; ctx.font="10px ui-monospace,monospace"; ctx.textAlign="left"; ctx.textBaseline="top";
+  ctx.fillText(tfmt("chart.zoomHint",(N/cnt).toFixed(1)),x0+4,y0+3);
+ }
+}
+function wireChartZoom(cv){
+ if(cv.__zoomWired)return; cv.__zoomWired=true;
+ // Колесо — зум по X вокруг курсора
+ cv.addEventListener("wheel",function(e){
+  e.preventDefault();
+  var N=samples.length; if(N<2)return;
+  var cnt=chartView._cnt||Math.min(DEF_VIEW,N), start=chartView._start||0, pw=chartView._plotW||1;
+  var rect=cv.getBoundingClientRect();
+  var relX=(e.clientX-rect.left)*(cv.width/rect.width)-64; // px в области графика
+  var frac=clampNum(relX/pw,0,1);
+  var anchorIdx=start+frac*(cnt-1); // индекс под курсором
+  var factor=e.deltaY<0?0.8:1.25;
+  var ncnt=Math.round(cnt*factor);
+  ncnt=clampNum(ncnt,2,N);
+  if(ncnt>=N){ chartView.cnt=null; chartView.end=null; drawChart(); return; }
+  chartView.cnt=ncnt;
+  // держим точку под курсором на месте
+  var nEnd=Math.round(anchorIdx+ (1-frac)*(ncnt-1))+1;
+  chartView.end=clampNum(nEnd,ncnt,N);
+  if(chartView.end>=N)chartView.end=null;
+  drawChart();
+ },{passive:false});
+ // Перетаскивание — панорама по времени
+ var dragging=false,dragX=0,baseEnd=0;
+ cv.addEventListener("mousedown",function(e){
+  var N=samples.length; dragging=true; dragX=e.clientX;
+  baseEnd=chartView.end==null?N:chartView.end; cv.style.cursor="grabbing";
+ });
+ window.addEventListener("mousemove",function(e){
+  if(!dragging)return;
+  var N=samples.length, cnt=chartView._cnt||Math.min(DEF_VIEW,N), pw=chartView._plotW||1;
+  var rect=cv.getBoundingClientRect();
+  var dxPx=(e.clientX-dragX)*(cv.width/rect.width);
+  var dIdx=Math.round(-dxPx/pw*cnt); // тянем вправо → раньше по времени
+  var nEnd=clampNum(baseEnd+dIdx,cnt,N);
+  chartView.cnt=cnt; chartView.end=(nEnd>=N)?null:nEnd;
+  drawChart();
+ });
+ window.addEventListener("mouseup",function(){ if(dragging){dragging=false; cv.style.cursor="";} });
+ // Двойной клик — сброс к авто-режиму
+ cv.addEventListener("dblclick",function(){ chartView.cnt=null; chartView.end=null; drawChart(); });
+ cv.style.cursor="grab";
+}
+
+function exportCsv(){
+ if(!samples.length){ alert(t("csv.empty")); return; }
+ var sep=";"; // RU Excel list separator
+ var lines=[];
+ lines.push("# AtomSpectra Gateway — CPS monitoring");
+ lines.push("# exported "+isoLocal(new Date())+"  tz "+tzLabel()+"  host "+location.hostname);
+ lines.push(["timestamp","dev_time_start_s","dev_time_end_s","duration_s","counts","mean_cps","sigma_cps","rel_err_pct"].join(sep));
+ for(var i=0;i<samples.length;i++){ var s=samples[i];
+  lines.push([isoLocal(s.ts),s.devStart,s.devEnd,s.dur,s.counts,
+   (isFinite(s.cps)?s.cps.toFixed(6):""),
+   (isFinite(s.sig)?s.sig.toFixed(6):""),
+   (isFinite(s.rel)?s.rel.toFixed(4):"")].join(sep)); }
+ // сводка сессии
+ if(sessDur>0){ var g=sessCounts/sessDur, gs=Math.sqrt(Math.max(sessCounts,0))/sessDur, gr=sessCounts>0?100/Math.sqrt(sessCounts):NaN;
+  lines.push("# session_mean_cps"+sep+g.toFixed(6)+sep+"sigma"+sep+gs.toFixed(6)+sep+"rel_pct"+sep+(isFinite(gr)?gr.toFixed(4):"")); }
+ var blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+ var url=URL.createObjectURL(blob), a=document.createElement("a");
+ var d=new Date();
+ a.href=url; a.download=fxPrefix+"cps_monitor_"+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate())+"_"+pad2(d.getHours())+pad2(d.getMinutes())+pad2(d.getSeconds())+".csv";
+ document.body.appendChild(a); a.click(); document.body.removeChild(a);
+ setTimeout(function(){URL.revokeObjectURL(url);},1500);
+}
+
+var fxPrefix="";
+async function loadPrefix(){try{var r=await(await fetch("/api/boot-config")).json();fxPrefix=r.name_prefix||"";var e=document.getElementById("fx-prefix");if(e)e.value=fxPrefix;}catch(_){}}
+async function savePrefix(){var e=document.getElementById("fx-prefix"),st=document.getElementById("fx-prefix-st");if(!e)return;st.textContent="…";try{var c=await(await fetch("/api/csrf-token")).json();var r=await fetch("/api/boot-config",{method:"POST",headers:{"X-CSRF-Token":c.token||"","Content-Type":"application/json"},body:JSON.stringify({name_prefix:e.value})});if(r.ok)await loadPrefix();st.textContent=r.ok?"✓":"✗";}catch(_){st.textContent="✗";}}
+
+(function(){
+ applyI18n();
+ try{ localStorage.removeItem("aswf-mon-sess"); localStorage.removeItem("aswf-mon-state"); }catch(e){} // #MON-2: сессия теперь на плате
+ loadPrefix();
+ renderStartBtn(); renderStatus(); renderAggregates(); renderXUnit(); drawChart();
+ document.getElementById("langBtn").onclick=function(){setLang(LANG==="ru"?"en":"ru");};
+ // #MON-1: синк серии с платы; серия дотягивается циклом внутри syncSeries —
+ // пропуски фона/F5/закрытой вкладки закрываются сами.
+ // #MON-4: серия — раз в 1 с (интервал по умолчанию 1 с, #MON-3: при 2 с точки
+ // появлялись парами); запрос лёгкий — без новых сэмплов ответ почти пустой.
+ // Живая панель (/api/spectrum.json, ~18 КБ) — по-прежнему раз в 2 с.
+ livePoll(); syncSeries();
+ setInterval(syncSeries,1000);
+ setInterval(livePoll,2000);
+ window.addEventListener("resize",drawChart);
+ setInterval(updateStatusChips,3000);
+ updateStatusChips();
+})();
+</script>
+<script src="/common-time.js"></script>
+</body>
+</html>

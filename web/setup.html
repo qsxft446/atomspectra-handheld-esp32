@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtomSpectra WiFi Setup</title>
+<style>
+:root{--accent:#34d3c0;--accent-dim:rgba(52,211,192,.12);--bg:#0a0c0a;--panel:#11150f;--bd:#20281e;--dim:#8a9686;--txt:#cfd6cd;}
+body{font-family:ui-monospace,'SF Mono','Cascadia Mono','DejaVu Sans Mono',Consolas,monospace;background:var(--bg);color:var(--txt);margin:0;padding:20px;max-width:420px;margin:0 auto}
+h1{color:var(--accent);text-align:center;font-size:22px;font-weight:700}
+.nets{margin:10px 0}
+.net{padding:10px 12px;margin:4px 0;background:var(--panel);border:1px solid var(--bd);border-radius:7px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.net:hover{background:#161b14;border-color:#2a322a}
+.net.sel{border:2px solid var(--accent);background:var(--accent-dim)}
+.sig{font-size:12px;color:var(--dim)}
+input{width:100%;padding:10px;margin:8px 0;background:var(--panel);color:#e8efe2;border:1px solid var(--bd);border-radius:7px;box-sizing:border-box;font-size:16px;outline:none;font-family:inherit}
+input:focus{border-color:var(--accent)}
+button{width:100%;padding:12px;background:var(--accent);color:#0c1206;border:none;border-radius:7px;font-size:17px;font-weight:700;cursor:pointer;margin-top:12px;font-family:inherit}
+button:hover{filter:brightness(1.1)}
+button:disabled{background:#2a322a;color:#5b655a;cursor:not-allowed}
+#st{text-align:center;padding:10px;margin-top:10px;min-height:20px;font-size:13px}
+.ok{color:var(--accent)}.err{color:#ff8a82}
+#rescan{width:auto;padding:8px 16px;font-size:13px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(52,211,192,.4);margin:8px 0;font-weight:600}
+#rescan:hover{filter:brightness(1.2);background:var(--accent-dim)}
+#langBtn{position:fixed;top:12px;right:12px;width:auto;margin:0;padding:6px 12px;font-size:12px;background:var(--panel);color:var(--accent);border:1px solid var(--bd);border-radius:6px;font-weight:600}
+</style>
+</head>
+<body>
+<button id="langBtn">EN</button>
+<h1>AtomSpectra WiFi Setup</h1>
+<div class="nets" id="nets" data-i18n="scan.progress">Сканирование сетей...</div>
+<button id="rescan" onclick="scan()" data-i18n="btn.rescan">Пересканировать</button>
+<input id="ssid" data-i18n-placeholder="ph.ssid" placeholder="WiFi-сеть (SSID)">
+<input id="pass" type="password" data-i18n-placeholder="ph.pass" placeholder="Пароль">
+<button onclick="doConnect()" id="btn" data-i18n="btn.connect">Подключиться</button>
+<div style="text-align:center;margin:14px 0;color:var(--dim);font-size:12px" data-i18n="field.or">— или без роутера —</div>
+<button id="fieldBtn" onclick="doField()" data-i18n="btn.field" style="background:var(--accent-dim);color:var(--accent);border:1px solid rgba(52,211,192,.4)">Полевой режим (Outdoor)</button>
+<div id="st"></div>
+
+<script>
+"use strict";
+var DICT={
+ ru:{
+  "scan.progress":"Сканирование сетей...",
+  "scan.empty":"Сети не найдены",
+  "scan.fail":"Ошибка сканирования",
+  "scan.running":"Сканирование...",
+  "btn.rescan":"Пересканировать",
+  "btn.connect":"Подключиться",
+  "ph.ssid":"WiFi-сеть (SSID)",
+  "ph.pass":"Пароль",
+  "secured":"защищена",
+  "err.ssid":"Введите SSID",
+  "saving":"Сохранение...",
+  "saved":"Сохранено! Перезагрузка в режим STA...",
+  "rebooting":"Устройство перезагружается, подключитесь к своей WiFi-сети",
+  "field.or":"— или без роутера —",
+  "btn.field":"Полевой режим (Outdoor)",
+  "field.confirm":"Запустить полевой AP без роутера? Плата перезагрузится и создаст точку доступа AtomSpectra-Outdoor (пароль atomspectra).",
+  "field.starting":"Запуск полевого режима, перезагрузка..."
+ },
+ en:{
+  "scan.progress":"Scanning networks...",
+  "scan.empty":"No networks found",
+  "scan.fail":"Scan failed",
+  "scan.running":"Scanning...",
+  "btn.rescan":"Rescan",
+  "btn.connect":"Connect",
+  "ph.ssid":"WiFi Network (SSID)",
+  "ph.pass":"Password",
+  "secured":"secured",
+  "err.ssid":"Enter SSID",
+  "saving":"Saving...",
+  "saved":"Saved! Rebooting in STA mode...",
+  "rebooting":"Device rebooting, connect to your WiFi network",
+  "field.or":"— or without a router —",
+  "btn.field":"Field mode (Outdoor)",
+  "field.confirm":"Start field AP without a router? The board will reboot and create the AtomSpectra-Outdoor access point (password atomspectra).",
+  "field.starting":"Starting field mode, rebooting..."
+ }
+};
+var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
+function t(k){var d=DICT[LANG]||DICT.ru;return(d[k]!==undefined)?d[k]:(DICT.ru[k]||k);}
+function applyI18n(){
+ document.querySelectorAll("[data-i18n]").forEach(function(el){
+  var k=el.getAttribute("data-i18n"); el.textContent=t(k);
+ });
+ document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){
+  var k=el.getAttribute("data-i18n-placeholder"); el.placeholder=t(k);
+ });
+ document.documentElement.lang=LANG;
+ var b=document.getElementById("langBtn"); if(b)b.textContent=(LANG==="ru")?"EN":"RU";
+}
+function setLang(l){
+ if(l!=="ru"&&l!=="en")l="ru";
+ LANG=l; try{localStorage.setItem("aswf-lang",l);}catch(e){}
+ applyI18n();
+}
+function scan(){
+    document.getElementById('nets').textContent=t("scan.running");
+    fetch('/api/scan').then(function(r){return r.json()}).then(function(d){
+        var c=document.getElementById('nets');
+        c.innerHTML='';
+        if(!d.length){c.textContent=t("scan.empty");return;}
+        d.forEach(function(n){
+            var div=document.createElement('div');
+            div.className='net';
+            var s1=document.createElement('span');
+            s1.textContent=n.ssid;
+            var s2=document.createElement('span');
+            s2.className='sig';
+            s2.textContent=n.rssi+' dBm'+(n.auth>0?' ['+t("secured")+']':'');
+            div.appendChild(s1);
+            div.appendChild(s2);
+            div.onclick=function(){
+                document.querySelectorAll('.net').forEach(function(e){e.classList.remove('sel')});
+                div.classList.add('sel');
+                document.getElementById('ssid').value=n.ssid;
+            };
+            c.appendChild(div);
+        });
+    }).catch(function(){document.getElementById('nets').textContent=t("scan.fail");});
+}
+function doConnect(){
+    var s=document.getElementById('ssid').value;
+    var p=document.getElementById('pass').value;
+    var st=document.getElementById('st');
+    if(!s){st.className='err';st.textContent=t("err.ssid");return;}
+    document.getElementById('btn').disabled=true;
+    st.className='ok';st.textContent=t("saving");
+    fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ssid:s,pass:p})})
+    .then(function(r){return r.json()}).then(function(){
+        st.textContent=t("saved");
+    }).catch(function(){
+        st.className='ok';st.textContent=t("rebooting");
+    });
+}
+// #FIELD-2c: запуск полевого AP-режима с фреш-платы без ввода домашней WiFi.
+// POST /api/field-mode (captive httpd, без CSRF) ставит NVS ap_mode=1 и ребутит —
+// плата поднимается в Outdoor (AtomSpectra-Outdoor). Fallback STA→Outdoor (90 с)
+// покрывает уже настроенные платы; эта кнопка — для свежих, где сети нет вовсе.
+function doField(){
+    if(!confirm(t("field.confirm")))return;
+    var st=document.getElementById('st');
+    document.getElementById('fieldBtn').disabled=true;
+    document.getElementById('btn').disabled=true;
+    st.className='ok';st.textContent=t("field.starting");
+    fetch('/api/field-mode',{method:'POST'})
+    .then(function(r){return r.json()}).then(function(){st.textContent=t("field.starting");})
+    .catch(function(){st.className='ok';st.textContent=t("field.starting");});
+}
+applyI18n();
+document.getElementById("langBtn").onclick=function(){setLang(LANG==="ru"?"en":"ru");};
+scan();
+</script>
+</body></html>
