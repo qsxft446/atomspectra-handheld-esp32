@@ -11,9 +11,14 @@ CFLAGS ?= -std=c11 -Wall -Wextra -Werror -O2 -I../../components/shproto/include 
 SRCS = test_shproto.c test_roundtrip.c ../../components/shproto/shproto.c \
        test_net_time.c ../../main/net_time.c
 
-test: $(SRCS) test_util.h
+test: $(SRCS) test_util.h alarm
 	$(CC) $(CFLAGS) -o test_runner $(SRCS)
 	./test_runner
+
+# #ALM-3: ритм сигнализации CPS (main/alarm_seq.h) — отдельный исполняемый файл.
+alarm: test_alarm_seq.c ../../main/alarm_seq.h
+	$(CC) $(CFLAGS) -o test_alarm_seq test_alarm_seq.c
+	./test_alarm_seq
 
 # Дополнительный прогон под санитайзерами: даже если canary-проверка пропустит
 # регрессию с записью за границу буфера, ASan поймает её жёстко.
@@ -22,6 +27,6 @@ asan: $(SRCS) test_util.h
 	./test_runner_asan
 
 clean:
-	rm -f test_runner test_runner_asan
+	rm -f test_runner test_runner_asan test_alarm_seq
 
-.PHONY: test asan clean
+.PHONY: test asan clean alarm

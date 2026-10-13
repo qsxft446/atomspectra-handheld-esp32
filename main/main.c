@@ -1,5 +1,6 @@
 ﻿#include "atomspectra.h"
 #include "spectrogram.h"
+#include "cps_alarm.h"
 #include "boot_config.h"
 #include "wf_offload.h"   // #REC-11-A2: автономная выгрузка сегментов водопада
 #include "monitor.h"      // #MON-1: серия CPS-мониторинга на плате
@@ -124,6 +125,7 @@ void app_main(void)
     // #FIELD-1: рабочий сетевой стек — общий для Indoor (STA) и Outdoor (полевой AP).
     web_server_init();
     monitor_init();      // #MON-1: кольцо серии CPS (6 ч в PSRAM) + задача-подписчик коммитов
+    cps_alarm_init();    // #ALM-1: пороги CPS — спикер GPIO21 и мигание CPS на экране
     tcp_bridge_init();
     if (net_mode == NET_MODE_STA) {
         wf_offload_init();   // #REC-11-A2: аплоадер сегментов — только Indoor (есть сеть/приёмник)

@@ -36,6 +36,7 @@
 #include "esp_wifi.h"
 #include "esp_timer.h"
 #include "esp_littlefs.h"
+#include "cps_alarm.h"         // #ALM-1
 #include "esp_random.h"
 #include <dirent.h>
 
@@ -426,6 +427,64 @@ static esp_err_t handle_boot_config_get(httpd_req_t *req)
         bc.name_prefix);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, resp);
+    return ESP_OK;
+}
+
+// #ALM-1: сигнализация CPS — включение и 4 порога (NVS "alarm"), level — текущий уровень.
+static esp_err_t handle_alarm_get(httpd_req_t *req)
+{
+    cps_alarm_cfg_t c;
+    cps_alarm_diag_t d;
+    cps_alarm_get_config(&c);
+    cps_alarm_diag(&d);
+#define MN(v) ((v) == INT32_MAX ? -1L : (long)(v))
+    char resp[400];
+    // #ALM-3: diag — фактические длительности ритма, мкс (-1 — не было).
+    snprintf(resp, sizeof(resp), "{\"enabled\":%s,\"th\":[%lu,%lu,%lu,%lu],\"level\":%d,"
+             "\"diag\":{\"level\":%d,\"beeps\":%lu,\"gaps\":%lu,\"pauses\":%lu,"
+             "\"on\":[%ld,%ld],\"gap\":[%ld,%ld],\"pause\":[%ld,%ld]}}",
+             c.enabled ? "true" : "false", (unsigned long)c.th[0], (unsigned long)c.th[1],
+             (unsigned long)c.th[2], (unsigned long)c.th[3], cps_alarm_level(),
+             d.level, (unsigned long)d.beeps, (unsigned long)d.gaps, (unsigned long)d.pauses,
+             MN(d.on_min_us), (long)d.on_max_us, MN(d.gap_min_us), (long)d.gap_max_us,
+             MN(d.pause_min_us), (long)d.pause_max_us);
+#undef MN
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, resp);
+    return ESP_OK;
+}
+
+static esp_err_t handle_alarm_set(httpd_req_t *req)
+{
+    if (!csrf_check(req)) return ESP_FAIL;
+    char body[256] = {0};
+    int recv_len = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (recv_len <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
+        return ESP_FAIL;
+    }
+    body[recv_len] = '\0';
+    cJSON *root = cJSON_Parse(body);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad JSON");
+        return ESP_FAIL;
+    }
+    cps_alarm_cfg_t c;
+    cps_alarm_get_config(&c);   // отсутствующие ключи — как есть
+    cJSON *it;
+    if ((it = cJSON_GetObjectItem(root, "enabled"))) c.enabled = cJSON_IsTrue(it);
+    if ((it = cJSON_GetObjectItem(root, "th")) && cJSON_IsArray(it) && cJSON_GetArraySize(it) == CPS_ALARM_LEVELS) {
+        for (int i = 0; i < CPS_ALARM_LEVELS; i++) {
+            cJSON *v = cJSON_GetArrayItem(it, i);
+            double d = cJSON_IsNumber(v) ? v->valuedouble : -1;
+            c.th[i] = d >= 0 && d <= CPS_ALARM_TH_MAX ? (uint32_t)d : 0;   // 0 отвергнет проверка
+        }
+    }
+    cJSON_Delete(root);
+    int rc = cps_alarm_set_config(&c);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, rc == 0 ? "{\"ok\":true}" : rc == -1 ? "{\"ok\":false,\"err\":\"order\"}"
+                                                               : "{\"ok\":false,\"err\":\"nvs\"}");
     return ESP_OK;
 }
 
@@ -1936,7 +1995,7 @@ void web_server_init(void)
     // tskNO_AFFINITY позволял httpd (prio 5) исполняться на core 0 рядом с
     // USB-приёмом — уводим целиком.
     config.core_id = 1;
-    config.max_uri_handlers = 80;        // #FS-1: 47 своих + 20 водопада + 5 /api/fs/* = 72 — ровно в старый предел, +8 запас. #WF-2/#MON-1/#FIELD-4: 41 базовых (uris[]: было 33 + 8 FIELD: /api/time,/api/ap-pass,6 captive-проб) + 20 waterfall (web_waterfall_register: 19 reg + /ws/waterfall) = 61. Лимит 45 когда-то переполнялся → тихие 404 у последних хэндлеров → цикл reconnect. 72 = +11 запас.
+    config.max_uri_handlers = 84;        // #ALM-1: +2 /api/alarm (было 80).        // #FS-1: 47 своих + 20 водопада + 5 /api/fs/* = 72 — ровно в старый предел, +8 запас. #WF-2/#MON-1/#FIELD-4: 41 базовых (uris[]: было 33 + 8 FIELD: /api/time,/api/ap-pass,6 captive-проб) + 20 waterfall (web_waterfall_register: 19 reg + /ws/waterfall) = 61. Лимит 45 когда-то переполнялся → тихие 404 у последних хэндлеров → цикл reconnect. 72 = +11 запас.
     config.stack_size = 8192;
     config.max_open_sockets = 11;        // из 16 LWIP-сокетов; запас для tcp_bridge + sntp
     config.lru_purge_enable = true;      // при исчерпании пула закрыть LRU-соединение, не отказывать (errno 23)
@@ -1967,6 +2026,8 @@ void web_server_init(void)
         {"/api/reset",                   HTTP_POST, handle_reset,            NULL},
         {"/api/boot-config",             HTTP_GET,  handle_boot_config_get,  NULL},
         {"/api/boot-config",             HTTP_POST, handle_boot_config_set,  NULL},
+        {"/api/alarm",                   HTTP_GET,  handle_alarm_get,        NULL},   // #ALM-1
+        {"/api/alarm",                   HTTP_POST, handle_alarm_set,        NULL},
         {"/api/save",                    HTTP_POST, handle_save,             NULL},
         {"/api/list",                    HTTP_GET,  handle_list,             NULL},
         {"/api/export.xml",              HTTP_GET,  handle_export_xml,       NULL},

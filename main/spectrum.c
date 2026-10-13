@@ -734,6 +734,18 @@ void spectrum_get_totals(uint32_t *counts, uint32_t *time_sec)
     SPEC_UNLOCK();
 }
 
+// #ALM-1: CPS последнего свипа (то же число, что крупно на экране) и время набора —
+// сигнализации раз в 50 мс; без копии 32 КБ bins.
+bool spectrum_get_cps(uint32_t *cps, uint32_t *time_sec)
+{
+    SPEC_LOCK();
+    bool v = s_spectrum.valid;
+    if (cps)      *cps      = s_spectrum.cps;
+    if (time_sec) *time_sec = s_spectrum.total_time_sec;
+    SPEC_UNLOCK();
+    return v;
+}
+
 // #SD-4 (запрос пользователя 2026-09-29): сохранённые спектры живут на SD-карте,
 // если она смонтирована при старте, иначе — во внутреннем флеше, как раньше.
 // Формат файлов тот же (spec_NNNN.bin = spectrum_data_t), поэтому список,

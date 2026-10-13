@@ -14,6 +14,7 @@
 //     - тач может быть повёрнут не в ту сторону — см. #TFT-4.
 //   Каждое лечится ОДНОЙ строкой в этом файле, помечено соответствующим тегом.
 
+#include "cps_alarm.h"   // #ALM-1
 #include "tft_display.h"
 #include "board_i2c.h"
 #include "board_spi.h"      // #SD-1: общие выводы SPI дисплея и SD-карты
@@ -199,6 +200,31 @@ static int s_ch_from = 1, s_ch_to = 5000;
 #define N_MYLAB         5
 #define N_MXLAB         8
 
+// #MNT-1 (запрос 2026-10-13): вид «на трубе» — прибор крепят к трубе спектрометра,
+// экран ПОРТРЕТНЫЙ 320x480 (поворот LVGL на 90°: порт сам перестраивает MADCTL,
+// LVGL сам поворачивает точки тача), всё минимально: крупно CPS, ниже график
+// мониторинга, ниже спектр, без вкладок и кнопок. Включается и выключается долгим
+// нажатием в центре экрана; режим хранится в NVS "tft"/"mount". Сначала был
+// поворот на 180° в альбомной ориентации — пользователь выбрал портрет.
+// MNT_ROT: верх портрета — левый край альбомного вида (прибор повёрнут по часовой).
+// Если нужен обратный — LV_DISP_ROT_270.
+#define MNT_ROT         LV_DISP_ROT_90
+#define MNT_PW          TFT_V_RES   // 320
+#define MNT_PH          TFT_H_RES   // 480
+#define MNT_LP_MS       1000    // долгое нажатие, мс
+#define MNT_LP_DX       100     // зона центра: |x-240| <= DX, |y-160| <= DY
+#define MNT_LP_DY       70
+#define MNT_LP_MOVE     30      // палец сдвинулся дальше — это не долгое нажатие
+#define MNT_X           4
+#define MNT_W           (MNT_PW - 2 * MNT_X)
+#define MNT_MON_Y       84      // #MNT-3: над графиком — полоса CPS (0..MNT_TOP_H)
+#define MNT_MON_H       184
+#define MNT_TOP_H       (MNT_MON_Y - 4)
+#define MNT_SWIPE_DY    60      // #MNT-3: свайп очистки — почти горизонтальный
+#define MNT_SPEC_Y      (MNT_MON_Y + MNT_MON_H + 6)
+#define MNT_SPEC_H      (MNT_PH - MNT_SPEC_Y - 4)
+#define COL_N           (MNT_W > PLOT_W ? MNT_W : PLOT_W)   // размер s_col
+
 // Палитра веба: :root в web/index.html и цвета внутри draw().
 #define COL_BG          0x0a0c0a    // --bg
 #define COL_PANEL       0x11150f    // --panel
@@ -218,6 +244,7 @@ static int s_ch_from = 1, s_ch_to = 5000;
 #define COL_DOT_OFF     0x5b655a    // .dot.off
 #define COL_CHIP_OK     0xaeb6a8    // .chip.ok
 #define COL_WARN        0xf0c45a    // .chip.warn, батарея < 50%
+#define COL_ALARM       0xff3030    // #ALM-1: число CPS при тревоге (мигает с обычным)
 #define GRID_ALPHA      0.05f       // rgba(255,255,255,.05)
 #define MGRID_ALPHA     0.04f       // сетка Y монитора: rgba(255,255,255,.04)
 #define FILL_ALPHA      (0x1e / 255.0f)   // accent+"1e"
@@ -227,7 +254,7 @@ static esp_lcd_touch_handle_t s_touch;
 
 // Всё крупное — в PSRAM: внутренняя RAM занята WiFi/lwIP впритык (#TFT-17).
 static spectrum_data_t *s_snap;     // снимок под SPEC_LOCK — поток USB пишет живой спектр
-static float           *s_col;      // CPS на колонку графика спектра, PLOT_W значений
+static float           *s_col;      // CPS на колонку графика спектра, COL_N значений
 static lv_color_t      *s_plot_buf; // холст спектра PLOT_W x PLOT_H
 static lv_color_t      *s_mon_buf;  // холст монитора MCH_W x MCH_H
 
@@ -249,6 +276,8 @@ static volatile bool s_spec_log;
 static lv_obj_t *s_tab_btn[4], *s_toast;   // #TFT-29: 4 вкладки; #TFT-36: кнопки
 // #TFT-27: нижняя панель в двух режимах (вкладки / действия) и подтверждение Clear.
 static lv_obj_t *s_tabs, *s_acts, *s_act_save, *s_confirm, *s_confirm_txt;
+static lv_obj_t *s_wifi;   // #TFT-41: экран WiFi (lv_layer_top), NULL — закрыт
+static lv_obj_t *s_alm;    // #ALM-1: экран порогов сигнализации (lv_layer_top), NULL — закрыт
 // #TFT-29: Start и «•••» скрываются на вкладке Conf; окно подтверждения общее —
 // текст и надпись кнопки задаёт вызвавший, команда уходит в tft_task.
 static lv_obj_t *s_btn_start, *s_btn_more, *s_confirm_ok_lbl;
@@ -284,6 +313,21 @@ static lv_obj_t *s_sess_val, *s_sess_err, *s_last_val, *s_last_err;
 static lv_obj_t *s_last_cap, *s_sma_lbl, *s_mon_stat;
 static lv_obj_t *s_raw_lbl;   // #MON-6: «CPS Ns» — интервал сессии (было «raw»)
 static lv_obj_t *s_mylab[N_MYLAB], *s_mxlab[N_MXLAB];
+// #MNT-1: вид «на трубе» — отдельный непрозрачный слой поверх всего экрана.
+static volatile bool s_mount;       // пишет tft_task (и init), читают тач и отрисовка
+static lv_indev_t   *s_indev;
+static lv_color_t   *s_mnt_mon_buf, *s_mnt_spec_buf;   // PSRAM
+static lv_obj_t *s_mnt, *s_mnt_cps, *s_mnt_unit, *s_mnt_dose, *s_mnt_dot, *s_mnt_batt;
+static lv_obj_t *s_mnt_mon, *s_mnt_mhi, *s_mnt_mlo, *s_mnt_raw, *s_mnt_sma, *s_mnt_mmsg;
+static lv_obj_t *s_mnt_spec, *s_mnt_sinfo, *s_mnt_smsg;
+LV_FONT_DECLARE(font_cps64)   // #MNT-2: свой Montserrat 64 px, только цифры (font_cps64.c)
+LV_FONT_DECLARE(font_cps104)  // #MNT-3: 104 px — CPS на всю высоту полосы до графика
+LV_FONT_DECLARE(font_cps80)   // #MNT-4: 80 px — 4 цифры
+static int      s_mnt_fi;        // #MNT-4: текущий шрифт числа (индекс в mnt_layout_top)
+static uint32_t s_mnt_up_since;  // крупнее можно с этого момента (lv_tick), 0 — нельзя
+static lv_point_t s_mnt_sw0;  // #MNT-3: начало касания спектра (свайп — очистка)
+static void mount_set(bool on);
+static void mount_save(void);
 
 static lv_color_t s_c_bg, s_c_grid, s_c_mgrid, s_c_fill, s_c_fill_grid, s_c_line, s_c_frame;
 
@@ -294,7 +338,11 @@ enum { TFT_CMD_START = 1, TFT_CMD_STOP, TFT_CMD_VIEW, TFT_CMD_CAL, TFT_CMD_CAL_D
        TFT_CMD_CLEAR, TFT_CMD_SAVE,
        TFT_CMD_NETMODE, TFT_CMD_CHWIN,
        TFT_CMD_FILES, TFT_CMD_FILE_OPEN, TFT_CMD_LIVE,
-       TFT_CMD_WIFI_SCAN, TFT_CMD_WIFI_CONNECT };   // #TFT-41   // #TFT-34   // #TFT-29: после подтверждения / отпускания ползунка   // #TFT-27: CLEAR — уже после подтверждения
+       TFT_CMD_WIFI_SCAN, TFT_CMD_WIFI_CONNECT, TFT_CMD_MOUNT,   // #MNT-1
+       TFT_CMD_MON_START,     // #MNT-2
+       TFT_CMD_MNT_CLEAR,     // #MNT-3: свайп по спектру — очистка спектра (не по вкладке)
+       TFT_CMD_MNT_MON_CLEAR,
+       TFT_CMD_ALARM_SAVE };   // #ALM-1: пороги с экрана -> NVS (tft_task)   // #MNT-5: свайп по графику мониторинга — очистка сессии   // #TFT-41   // #TFT-34   // #TFT-29: после подтверждения / отпускания ползунка   // #TFT-27: CLEAR — уже после подтверждения
 static bool          s_ui_ok;       // экран поднят полностью (для веба)
 static bool          s_lvgl_up;     // #SD-2: порт LVGL запущен — шина SPI занята его кадрами
 static QueueHandle_t s_cmd_q;
@@ -403,13 +451,13 @@ static double kev2ch(const spectrum_data_t *sp, double kev)
 // По МАКСИМУМУ в колонке: в вебе соседние точки ложатся на один пиксель, и
 // глаз видит огибающую сверху. Сумма подняла бы шкалу в ~11 раз против веба,
 // а выборка через колонку (как было) теряла узкие пики. Возвращает максимум.
-static float build_columns(const spectrum_data_t *sp, float tt)
+static float build_columns(const spectrum_data_t *sp, float tt, int w)   // w <= COL_N
 {
     const int range = SPEC_CH_TO - SPEC_CH_FROM + 1;
     float mx = 0;
     int ch0 = SPEC_CH_FROM;
-    for (int x = 0; x < PLOT_W; x++) {
-        int ch1 = SPEC_CH_FROM + (int)((int64_t)range * (x + 1) / PLOT_W);
+    for (int x = 0; x < w; x++) {
+        int ch1 = SPEC_CH_FROM + (int)((int64_t)range * (x + 1) / w);
         if (ch1 <= ch0) ch1 = ch0 + 1;
         uint32_t m = 0;
         for (int ch = ch0; ch < ch1; ch++) if (sp->bins[ch] > m) m = sp->bins[ch];
@@ -552,7 +600,7 @@ static touch_cal_t s_tcal;               // действует, если magic =
 // 4 КБ, не 3: при ошибке I2C драйвер тача пишет ESP_LOGE из этой задачи —
 // замер 2026-09-28: свободно 1640 Б в норме, 712 Б после одной такой ошибки.
 #define TP_TASK_STACK   4096
-typedef struct { int16_t x, y, rx, ry; bool pressed; } tp_evt_t;   // rx/ry — сырые (калибровка)
+typedef struct { int16_t x, y, rx, ry; bool pressed, lp; } tp_evt_t;   // rx/ry — сырые (калибровка); lp — #MNT-1
 static QueueHandle_t s_tp_q;
 static int16_t       s_tp_raw_x, s_tp_raw_y;   // пишет touch_process() в задаче тача
 static bool        s_cal_active;
@@ -601,6 +649,9 @@ static void tp_task(void *arg)
     bool was = false;
     tp_evt_t ev = {0};
     int lost = 0, polls = 0;
+    TickType_t lp_t0 = 0;   // #MNT-1: начало нажатия в центре
+    int16_t lp_x0 = 0, lp_y0 = 0;
+    bool lp_armed = false;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(TP_POLL_MS));
         esp_lcd_touch_point_data_t pt;   // get_data — тоже через touch_process()
@@ -612,6 +663,23 @@ static void tp_task(void *arg)
             ev.y = (int16_t)pt.y;
             ev.rx = s_tp_raw_x;
             ev.ry = s_tp_raw_y;
+        }
+        // #MNT-1: долгое нажатие в центре — палец почти не двигался MNT_LP_MS.
+        ev.lp = false;
+        if (pr && !was) {
+            lp_t0 = xTaskGetTickCount();
+            lp_x0 = ev.x;
+            lp_y0 = ev.y;
+            lp_armed = !s_cal_active && LV_ABS(ev.x - TFT_H_RES / 2) <= MNT_LP_DX &&
+                       LV_ABS(ev.y - TFT_V_RES / 2) <= MNT_LP_DY;
+        }
+        if (pr && lp_armed) {
+            if (LV_ABS(ev.x - lp_x0) > MNT_LP_MOVE || LV_ABS(ev.y - lp_y0) > MNT_LP_MOVE) {
+                lp_armed = false;
+            } else if (xTaskGetTickCount() - lp_t0 >= pdMS_TO_TICKS(MNT_LP_MS)) {
+                ev.lp = true;   // одно событие на нажатие
+                lp_armed = false;
+            }
         }
         if (pr || was) {   // отпускание — с координатами последнего касания
             ev.pressed = pr;
@@ -638,6 +706,14 @@ static void tp_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
             s_cal_sum_x += ev.rx;
             s_cal_sum_y += ev.ry;
             s_cal_n++;
+        }
+        // #MNT-1: долгое нажатие в центре — смена вида. Нажатие у объекта под
+        // пальцем снимается (PRESS_LOST, без CLICKED). Не при открытых окнах
+        // (подтверждение, WiFi: под пальцем клавиатура) и не при калибровке.
+        if (ev.lp && !s_cal_active && !s_wifi && !s_alm && lv_obj_has_flag(s_confirm, LV_OBJ_FLAG_HIDDEN)) {
+            lv_indev_wait_release(s_indev);
+            uint8_t cmd = TFT_CMD_MOUNT;
+            xQueueSend(s_cmd_q, &cmd, 0);
         }
         data->continue_reading = uxQueueMessagesWaiting(s_tp_q) > 0;
     }
@@ -847,6 +923,7 @@ static void panel_init(void)
         indev_drv.disp = disp;
         indev_drv.read_cb = tp_read_cb;
         lv_indev_t *indev = lv_indev_drv_register(&indev_drv);
+        s_indev = indev;   // #MNT-1: lv_indev_wait_release() из tp_read_cb
         lvgl_port_unlock();
         // Приоритет выше задачи LVGL (4): опрос не ждёт перерисовку.
         // #RAM-1: стек в PSRAM — задача только I2C и очередь, во флеш не пишет.
@@ -975,24 +1052,73 @@ static void live_cb(lv_event_t *e)
     xQueueSend(s_cmd_q, &cmd, 0);
 }
 
-// #TFT-24: двойной тап по графику спектра — Lin <-> Log. В LVGL 8 события
-// двойного клика нет: второй короткий тап не позже DTAP_MS и не дальше DTAP_PX.
-static void plot_tap_cb(lv_event_t *e)
+// В LVGL 8 события двойного клика нет: второй короткий тап не позже DTAP_MS и
+// не дальше DTAP_PX. Состояние — своё у каждого объекта (dtap_t).
+typedef struct { uint32_t ms; lv_point_t pt; } dtap_t;
+
+static bool dtap_second(dtap_t *d)
 {
-    (void)e;
-    static uint32_t last_ms;
-    static lv_point_t last_pt;
     lv_point_t pt;
     lv_indev_get_point(lv_indev_get_act(), &pt);
     uint32_t now = lv_tick_get();
-    bool second = last_ms && now - last_ms <= DTAP_MS &&
-                  LV_ABS(pt.x - last_pt.x) <= DTAP_PX && LV_ABS(pt.y - last_pt.y) <= DTAP_PX;
+    bool second = d->ms && now - d->ms <= DTAP_MS &&
+                  LV_ABS(pt.x - d->pt.x) <= DTAP_PX && LV_ABS(pt.y - d->pt.y) <= DTAP_PX;
     if (!second) {
-        last_ms = now;
-        last_pt = pt;
+        d->ms = now;
+        d->pt = pt;
+        return false;
+    }
+    d->ms = 0;   // третий тап — снова «первый»
+    return true;
+}
+
+// #MNT-2: двойной тап по графику мониторинга вида «на трубе» — старт сессии
+// (кнопок в этом виде нет). Сама команда — в tft_task.
+static void mnt_mon_tap_cb(lv_event_t *e)
+{
+    (void)e;
+    static dtap_t d;
+    if (!dtap_second(&d)) return;
+    uint8_t cmd = TFT_CMD_MON_START;
+    xQueueSend(s_cmd_q, &cmd, 0);
+}
+
+static void plot_tap_cb(lv_event_t *e);
+
+// #MNT-3 (запрос 2026-10-13): графики вида «на трубе». Свайп справа налево: начало
+// в правых 40 % графика, конец в левых 40 %, почти горизонтально. По спектру (от
+// больших каналов к нулю) — очистка спектра (как Clear вкладки Spectrum: -rst + сброс
+// платы); #MNT-5 — по мониторингу: очистка сессии (как Clear вкладки Monitor).
+// Короткий тап на месте — к двойному тапу (спектр: Lin/Log, мониторинг: старт);
+// сдвинутый палец тапом не считается. user_data: 0 — спектр, 1 — мониторинг.
+static void mnt_swipe_ev_cb(lv_event_t *e)
+{
+    bool mon = (intptr_t)lv_event_get_user_data(e) != 0;
+    lv_event_code_t c = lv_event_get_code(e);
+    lv_point_t pt;
+    lv_indev_get_point(lv_indev_get_act(), &pt);
+    if (c == LV_EVENT_PRESSED) { s_mnt_sw0 = pt; return; }
+    int dx = pt.x - s_mnt_sw0.x, dy = pt.y - s_mnt_sw0.y;
+    if (c == LV_EVENT_RELEASED) {
+        if (s_mnt_sw0.x >= MNT_X + MNT_W * 6 / 10 && pt.x <= MNT_X + MNT_W * 4 / 10 &&
+            LV_ABS(dy) <= MNT_SWIPE_DY) {
+            uint8_t cmd = mon ? TFT_CMD_MNT_MON_CLEAR : TFT_CMD_MNT_CLEAR;
+            xQueueSend(s_cmd_q, &cmd, 0);
+        }
         return;
     }
-    last_ms = 0;   // третий тап — снова «первый»
+    if (c == LV_EVENT_SHORT_CLICKED && LV_ABS(dx) <= DTAP_PX && LV_ABS(dy) <= DTAP_PX) {
+        if (mon) mnt_mon_tap_cb(e);
+        else     plot_tap_cb(e);
+    }
+}
+
+// #TFT-24: двойной тап по графику спектра — Lin <-> Log.
+static void plot_tap_cb(lv_event_t *e)
+{
+    (void)e;
+    static dtap_t d;   // общий для спектра вкладки и вида «на трубе»: виден только один
+    if (!dtap_second(&d)) return;
     s_spec_log = !s_spec_log;
     toast_show(s_spec_log ? "Log scale" : "Linear scale", COL_ACCENT);
     uint8_t cmd = TFT_CMD_SCALE;   // перерисовка — в tft_task
@@ -1148,7 +1274,7 @@ static void confirm_cb(lv_event_t *e)
 #define WNET_MAX 24
 static wifi_net_t *s_wnets;                 // PSRAM; пишет tft_task, читает LVGL — под замком
 static int s_wnet_n = -2;                   // -2 — поиск идёт, -1 — ошибка
-static lv_obj_t *s_wifi, *s_wifi_tbl, *s_wifi_stat;          // экран списка (lv_layer_top)
+static lv_obj_t *s_wifi_tbl, *s_wifi_stat;                   // экран списка — s_wifi (lv_layer_top)
 static lv_obj_t *s_wifi_pw, *s_wifi_ta_ssid, *s_wifi_ta_pass, *s_wifi_kb, *s_wifi_pw_stat, *s_wifi_ssid_lbl;
 static char s_try_ssid[WIFI_SSID_MAX + 1], s_try_pass[WIFI_PASS_MAX + 1];
 static volatile bool s_wifi_busy;           // идёт подключение
@@ -1405,6 +1531,105 @@ static void wifi_connect_run(void)
     }
 }
 
+// ---------------- #ALM-1: экран порогов сигнализации ----------------
+// Conf -> Alarm. Правится копия s_alm_edit (задача LVGL), Save отдаёт её tft_task
+// (NVS — не из задачи LVGL: стек в PSRAM, #RAM-1). Как экран WiFi — на lv_layer_top,
+// создаётся при открытии, удаляется lv_obj_del_async.
+static lv_obj_t *s_alm_val[CPS_ALARM_LEVELS], *s_alm_en_btn;
+static cps_alarm_cfg_t s_alm_edit, s_alm_pend;
+
+static void alm_render(void)   // под замком LVGL
+{
+    for (int i = 0; i < CPS_ALARM_LEVELS; i++)
+        lv_label_set_text_fmt(s_alm_val[i], "%lu", (unsigned long)s_alm_edit.th[i]);
+    lv_label_set_text(lv_obj_get_child(s_alm_en_btn, 0), s_alm_edit.enabled ? "Alarm ON" : "Alarm OFF");
+    btn_select(s_alm_en_btn, s_alm_edit.enabled);
+}
+
+static uint32_t alm_step(uint32_t v)
+{
+    return v < 20 ? 1 : v < 200 ? 5 : v < 1000 ? 25 : v < 5000 ? 100 : 500;
+}
+
+// -/+ порога; удержание кнопки — повтор (LONG_PRESSED_REPEAT). Порог остаётся
+// строго между соседними. user_data: (уровень << 1) | плюс.
+static void alm_pm_cb(lv_event_t *e)
+{
+    int ud = (int)(intptr_t)lv_event_get_user_data(e), i = ud >> 1;
+    uint32_t v = s_alm_edit.th[i];
+    uint32_t lo = i ? s_alm_edit.th[i - 1] + 1 : 1;
+    uint32_t hi = i < CPS_ALARM_LEVELS - 1 ? s_alm_edit.th[i + 1] - 1 : CPS_ALARM_TH_MAX;
+    if (ud & 1) {
+        v += alm_step(v);
+    } else {
+        uint32_t st = alm_step(v > 1 ? v - 1 : 1);
+        v = v > st ? v - st : 1;
+    }
+    s_alm_edit.th[i] = v < lo ? lo : v > hi ? hi : v;
+    alm_render();
+}
+
+static void alm_close(void)
+{
+    if (!s_alm) return;
+    lv_obj_del_async(s_alm);   // из событий его же кнопок — только async
+    s_alm = NULL;
+}
+
+static void alm_en_cb(lv_event_t *e)     { (void)e; s_alm_edit.enabled = !s_alm_edit.enabled; alm_render(); }
+static void alm_cancel_cb(lv_event_t *e) { (void)e; alm_close(); }
+
+static void alm_save_cb(lv_event_t *e)
+{
+    (void)e;
+    s_alm_pend = s_alm_edit;
+    uint8_t cmd = TFT_CMD_ALARM_SAVE;
+    xQueueSend(s_cmd_q, &cmd, 0);
+    alm_close();
+}
+
+static void alm_open_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_alm) return;
+    cps_alarm_get_config(&s_alm_edit);
+    static const char *const PAT[CPS_ALARM_LEVELS] = { "1   1 beep", "2   2 beeps", "3   3 beeps", "4   fast" };
+    lv_obj_t *w = s_alm = mk_rect(lv_layer_top(), 0, 0, TFT_H_RES, TFT_V_RES, COL_BG);
+    lv_obj_add_flag(w, LV_OBJ_FLAG_CLICKABLE);   // касания не уходят к экрану под ним
+    mk_label(w, 12, 12, &lv_font_montserrat_16, COL_TXT, LV_SYMBOL_BELL "  CPS alarm");
+    mk_button(w, 296, 6, 84, "Cancel", COL_DIM, COL_TXT, LV_OPA_10, alm_cancel_cb, 0);
+    mk_button(w, 386, 6, 84, LV_SYMBOL_OK " Save", COL_ACCENT, COL_ACCENT, LV_OPA_20, alm_save_cb, 0);
+    s_alm_en_btn = mk_button(w, 12, 46, 150, "", COL_DIM, COL_TXT, LV_OPA_10, alm_en_cb, 0);
+    mk_label(w, 176, 54, &lv_font_montserrat_12, COL_DIM, "CPS per 1 s, speaker GPIO21");
+    for (int i = 0; i < CPS_ALARM_LEVELS; i++) {
+        int y = 94 + i * 54;
+        mk_label(w, 12, y + 6, &lv_font_montserrat_16, COL_TXT, PAT[i]);
+        lv_obj_t *m = mk_button(w, 150, y, 70, LV_SYMBOL_MINUS, COL_DIM, COL_TXT, LV_OPA_10, alm_pm_cb, (uint8_t)(i << 1));
+        lv_obj_t *p = mk_button(w, 400, y, 70, LV_SYMBOL_PLUS, COL_DIM, COL_TXT, LV_OPA_10, alm_pm_cb, (uint8_t)(i << 1 | 1));
+        lv_obj_add_event_cb(m, alm_pm_cb, LV_EVENT_LONG_PRESSED_REPEAT, (void *)(intptr_t)(i << 1));
+        lv_obj_add_event_cb(p, alm_pm_cb, LV_EVENT_LONG_PRESSED_REPEAT, (void *)(intptr_t)(i << 1 | 1));
+        s_alm_val[i] = mk_label(w, 230, y - 1, &lv_font_montserrat_28, COL_ACCENT, "");
+        lv_obj_set_width(s_alm_val[i], 160);
+        lv_obj_set_style_text_align(s_alm_val[i], LV_TEXT_ALIGN_CENTER, 0);
+    }
+    alm_render();
+}
+
+// #ALM-1: число CPS (шапка и вид «на трубе») при тревоге мигает красным раз в
+// секунду (500 мс красное / 500 мс обычное). lv_timer — задача LVGL.
+static void alm_blink_cb(lv_timer_t *t)
+{
+    (void)t;
+    static bool phase;
+    static uint32_t last = COL_ACCENT;
+    phase = cps_alarm_level() > 0 ? !phase : false;
+    uint32_t col = phase ? COL_ALARM : COL_ACCENT;
+    if (col == last) return;
+    last = col;
+    lv_obj_set_style_text_color(s_cps_val, lv_color_hex(col), 0);
+    if (s_mnt_cps) lv_obj_set_style_text_color(s_mnt_cps, lv_color_hex(col), 0);
+}
+
 // #TFT-29: режим сети. Переключение — перезагрузка платы, поэтому через подтверждение.
 static void net_btn_cb(lv_event_t *e)
 {
@@ -1469,7 +1694,7 @@ static lv_obj_t *mk_tile(lv_obj_t *p, int x, const char *cap, lv_obj_t **val, lv
 static bool build_ui(void)
 {
     s_snap     = heap_caps_malloc(sizeof(*s_snap), MALLOC_CAP_SPIRAM);
-    s_col      = heap_caps_malloc(PLOT_W * sizeof(float), MALLOC_CAP_SPIRAM);
+    s_col      = heap_caps_malloc(COL_N * sizeof(float), MALLOC_CAP_SPIRAM);
     s_plot_buf = heap_caps_malloc((size_t)PLOT_W * PLOT_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
     s_mon_buf  = heap_caps_malloc((size_t)MCH_W * MCH_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
     s_iv       = heap_caps_malloc(MON_CAP * sizeof(*s_iv), MALLOC_CAP_SPIRAM);
@@ -1485,9 +1710,12 @@ static bool build_ui(void)
     s_fent     = heap_caps_calloc(FILES_MAX, sizeof(*s_fent), MALLOC_CAP_SPIRAM);   // #TFT-34
     s_wnets    = heap_caps_calloc(WNET_MAX, sizeof(*s_wnets), MALLOC_CAP_SPIRAM);  // #TFT-41
     s_saved    = heap_caps_malloc(sizeof(*s_saved), MALLOC_CAP_SPIRAM);
+    s_mnt_mon_buf  = heap_caps_malloc((size_t)MNT_W * MNT_MON_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);   // #MNT-1
+    s_mnt_spec_buf = heap_caps_malloc((size_t)MNT_W * MNT_SPEC_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
     if (!s_snap || !s_col || !s_plot_buf || !s_mon_buf || !s_iv || !s_mon_tmp ||
         !s_m_raw || !s_m_sma || !s_m_pr || !s_m_ps ||
-        !s_wf_cols || !s_wf_rmax || !s_wf_rowbuf || !s_wf_buf || !s_fent || !s_saved) {
+        !s_wf_cols || !s_wf_rmax || !s_wf_rowbuf || !s_wf_buf || !s_fent || !s_saved ||
+        !s_mnt_mon_buf || !s_mnt_spec_buf) {
         ESP_LOGE(TAG, "malloc failed for TFT buffers — TFT UI disabled");
         return false;
     }
@@ -1504,6 +1732,8 @@ static bool build_ui(void)
     // показывал его «шумом» при загрузке. Сразу заливаем фоном графика.
     for (int i = 0; i < PLOT_W * PLOT_H; i++) s_plot_buf[i] = s_wf_buf[i] = s_c_bg;
     for (int i = 0; i < MCH_W * MCH_H; i++) s_mon_buf[i] = s_c_bg;
+    for (int i = 0; i < MNT_W * MNT_MON_H; i++) s_mnt_mon_buf[i] = s_c_bg;
+    for (int i = 0; i < MNT_W * MNT_SPEC_H; i++) s_mnt_spec_buf[i] = s_c_bg;
 
     lvgl_port_lock(0);
     lv_obj_t *scr = lv_obj_create(NULL);
@@ -1553,6 +1783,7 @@ static bool build_ui(void)
     s_ip = mk_label(scr, 0, 0, &lv_font_montserrat_14, COL_DIM, "");
     lv_obj_align(s_ip, LV_ALIGN_TOP_RIGHT, -HDR_R_PAD, 22);
     lv_timer_create(dot_blink_cb, DOT_BLINK_MS, NULL);   // #TFT-39
+    lv_timer_create(alm_blink_cb, 500, NULL);            // #ALM-1: мигание CPS при тревоге
 
     // Панель «Спектр».
     s_pane_spec = mk_pane(scr);
@@ -1628,12 +1859,15 @@ static bool build_ui(void)
     lv_obj_add_flag(s_pane_conf, LV_OBJ_FLAG_HIDDEN);
     mk_label(s_pane_conf, 16, 56, &lv_font_montserrat_14, COL_DIM, "Network mode");
     s_net_lbl = mk_label(s_pane_conf, 16, 76, &lv_font_montserrat_12, COL_TXT, "");
-    s_net_btn[0] = mk_button(s_pane_conf, 16, 96, 170, "Indoor", COL_ACCENT, COL_TXT,
+    // #ALM-1: четыре кнопки в ряд (Indoor/Outdoor были по 170 px).
+    s_net_btn[0] = mk_button(s_pane_conf, 16, 96, 120, "Indoor", COL_ACCENT, COL_TXT,
                              LV_OPA_10, net_btn_cb, 0);
-    s_net_btn[1] = mk_button(s_pane_conf, 196, 96, 170, "Outdoor", COL_ACCENT, COL_TXT,
+    s_net_btn[1] = mk_button(s_pane_conf, 146, 96, 120, "Outdoor", COL_ACCENT, COL_TXT,
                              LV_OPA_10, net_btn_cb, 1);
-    mk_button(s_pane_conf, 376, 96, 88, LV_SYMBOL_WIFI " WiFi", COL_DIM, COL_TXT, LV_OPA_10,
+    mk_button(s_pane_conf, 276, 96, 90, LV_SYMBOL_WIFI " WiFi", COL_DIM, COL_TXT, LV_OPA_10,
               wifi_open_cb, 0);   // #TFT-41
+    mk_button(s_pane_conf, 376, 96, 88, LV_SYMBOL_BELL " Alarm", COL_DIM, COL_TXT, LV_OPA_10,
+              alm_open_cb, 0);    // #ALM-1
     mk_rect(s_pane_conf, 16, 144, TFT_H_RES - 32, 1, COL_BD);
     mk_label(s_pane_conf, 16, 156, &lv_font_montserrat_14, COL_DIM, "Display window, channels");
     s_chw_lbl = mk_label(s_pane_conf, 0, 156, &lv_font_montserrat_16, COL_ACCENT, "");
@@ -1752,6 +1986,54 @@ static bool build_ui(void)
     s_confirm_ok_lbl = lv_obj_get_child(ok, 0);   // надпись меняют clear_cb / net_btn_cb
     lv_obj_add_flag(s_confirm, LV_OBJ_FLAG_HIDDEN);
 
+    // #MNT-1: вид «на трубе» — непрозрачный слой во весь экран поверх панелей и
+    // кнопок (касания вниз не пропускает); подсказки (toast) — над ним.
+    s_mnt = mk_rect(scr, 0, 0, MNT_PW, MNT_PH, COL_BG);   // в портретных координатах
+    lv_obj_add_flag(s_mnt, LV_OBJ_FLAG_CLICKABLE);
+    // #MNT-3 (запрос 2026-10-13): число CPS — на всю высоту полосы до графика,
+    // самым крупным шрифтом, что влезает по ширине (mnt_layout_top); батарея,
+    // подпись CPS и доза — узкой колонкой справа (строка под батарею съедала место).
+    s_mnt_cps  = mk_label(s_mnt, 8, 0, &font_cps104, COL_ACCENT, "--");
+    s_mnt_batt = mk_label(s_mnt, 0, 0, &lv_font_montserrat_16, COL_CHIP_OK, "");
+    lv_obj_align(s_mnt_batt, LV_ALIGN_TOP_RIGHT, -8, 6);
+    s_mnt_dot = mk_rect(s_mnt, 0, 0, 10, 10, COL_DOT_OFF);
+    lv_obj_set_style_radius(s_mnt_dot, LV_RADIUS_CIRCLE, 0);
+    s_mnt_unit = mk_label(s_mnt, 0, 0, &lv_font_montserrat_16, COL_DIM, "CPS");
+    lv_obj_align(s_mnt_unit, LV_ALIGN_TOP_RIGHT, -8, 32);
+    s_mnt_dose = mk_label(s_mnt, 0, 0, &lv_font_montserrat_14, COL_TXT, "");
+    lv_obj_align(s_mnt_dose, LV_ALIGN_TOP_RIGHT, -8, 58);
+    lv_obj_add_flag(s_mnt_dose, LV_OBJ_FLAG_HIDDEN);
+    s_mnt_mon = lv_canvas_create(s_mnt);
+    lv_canvas_set_buffer(s_mnt_mon, s_mnt_mon_buf, MNT_W, MNT_MON_H, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_set_pos(s_mnt_mon, MNT_X, MNT_MON_Y);
+    lv_obj_add_flag(s_mnt_mon, LV_OBJ_FLAG_CLICKABLE);   // #MNT-2: двойной тап — старт мониторинга
+    lv_obj_add_flag(s_mnt_mon, LV_OBJ_FLAG_PRESS_LOCK);   // #MNT-5: свайп справа налево — очистка
+    lv_obj_add_event_cb(s_mnt_mon, mnt_swipe_ev_cb, LV_EVENT_PRESSED, (void *)1);
+    lv_obj_add_event_cb(s_mnt_mon, mnt_swipe_ev_cb, LV_EVENT_RELEASED, (void *)1);
+    lv_obj_add_event_cb(s_mnt_mon, mnt_swipe_ev_cb, LV_EVENT_SHORT_CLICKED, (void *)1);
+    s_mnt_mhi = mk_label(s_mnt, MNT_X + 5, MNT_MON_Y + 3, &lv_font_montserrat_12, COL_TICK_X, "");
+    s_mnt_mlo = mk_label(s_mnt, MNT_X + 5, MNT_MON_Y + MNT_MON_H - 17, &lv_font_montserrat_12, COL_TICK_X, "");
+    s_mnt_sma = mk_label(s_mnt, 0, 0, &lv_font_montserrat_12, COL_SMA, "SMA");
+    lv_obj_align(s_mnt_sma, LV_ALIGN_TOP_RIGHT, -(MNT_X + 6), MNT_MON_Y + 3);
+    s_mnt_raw = mk_label(s_mnt, 0, MNT_MON_Y + 3, &lv_font_montserrat_12, COL_ACCENT, "CPS 1s");
+    s_mnt_mmsg = mk_label(s_mnt, MNT_X, MNT_MON_Y + MNT_MON_H / 2 - 9, &lv_font_montserrat_14, COL_DIM, "");
+    lv_obj_set_width(s_mnt_mmsg, MNT_W);
+    lv_obj_set_style_text_align(s_mnt_mmsg, LV_TEXT_ALIGN_CENTER, 0);
+    s_mnt_spec = lv_canvas_create(s_mnt);
+    lv_canvas_set_buffer(s_mnt_spec, s_mnt_spec_buf, MNT_W, MNT_SPEC_H, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_set_pos(s_mnt_spec, MNT_X, MNT_SPEC_Y);
+    // Двойной тап — Lin/Log, как на Spectrum; свайп справа налево — очистка (#MNT-3).
+    lv_obj_add_flag(s_mnt_spec, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(s_mnt_spec, mnt_swipe_ev_cb, LV_EVENT_PRESSED, (void *)0);
+    lv_obj_add_event_cb(s_mnt_spec, mnt_swipe_ev_cb, LV_EVENT_RELEASED, (void *)0);
+    lv_obj_add_event_cb(s_mnt_spec, mnt_swipe_ev_cb, LV_EVENT_SHORT_CLICKED, (void *)0);
+    s_mnt_sinfo = mk_label(s_mnt, 0, 0, &lv_font_montserrat_12, COL_TICK_X, "");
+    lv_obj_align(s_mnt_sinfo, LV_ALIGN_TOP_RIGHT, -(MNT_X + 6), MNT_SPEC_Y + 3);
+    s_mnt_smsg = mk_label(s_mnt, MNT_X, MNT_SPEC_Y + MNT_SPEC_H / 2 - 9, &lv_font_montserrat_14, COL_DIM, "");
+    lv_obj_set_width(s_mnt_smsg, MNT_W);
+    lv_obj_set_style_text_align(s_mnt_smsg, LV_TEXT_ALIGN_CENTER, 0);
+    if (!s_mount) lv_obj_add_flag(s_mnt, LV_OBJ_FLAG_HIDDEN);
+
     // Результат нажатия кнопки — поверх панелей, на пару секунд.
     s_toast = mk_label(scr, 0, 0, &lv_font_montserrat_14, COL_TXT, "");
     lv_obj_set_style_bg_color(s_toast, lv_color_hex(COL_PANEL), 0);
@@ -1779,6 +2061,7 @@ static bool build_ui(void)
     lv_obj_add_flag(s_cal_layer, LV_OBJ_FLAG_HIDDEN);
 
     lv_scr_load(scr);
+    if (s_mount) mount_set(true);   // #MNT-1: старт в портрете (режим из NVS)
     lvgl_port_unlock();
     return true;
 }
@@ -1788,22 +2071,42 @@ static bool build_ui(void)
 #define PX(x, y)  s_plot_buf[(y) * PLOT_W + (x)]
 #define MPX(x, y) s_mon_buf[(y) * MCH_W + (x)]
 
-// Строка холста для значения: yMap() веба, 0 — верх, PLOT_H-1 — низ.
+// Строка холста высотой h для значения: yMap() веба, 0 — верх, h-1 — низ.
 // log: [lo..hi] — показатели степени; lin: [0..hi] — значения (#TFT-24).
-static int y_row(float v, bool lg, float lo, float hi)
+static int y_row_h(float v, bool lg, float lo, float hi, int h)
 {
-    if (v <= 0) return PLOT_H - 1;
+    if (v <= 0) return h - 1;
     float f;
     if (lg) {
         float l = log10f(v);
-        if (l <= lo) return PLOT_H - 1;
+        if (l <= lo) return h - 1;
         if (l >= hi) return 0;
         f = (l - lo) / (hi - lo);
     } else {
         f = v / hi;
         if (f >= 1) return 0;
     }
-    return (PLOT_H - 1) - (int)(f * (PLOT_H - 1) + 0.5f);
+    return (h - 1) - (int)(f * (h - 1) + 0.5f);
+}
+
+static int y_row(float v, bool lg, float lo, float hi) { return y_row_h(v, lg, lo, hi, PLOT_H); }
+
+// Шкала Y спектра: Lin веба — 0..пик, деления niceStep(mx, 6); Log веба (#UI-36) —
+// верх пик + 0.15 декады, пол — ОДИН отсчёт за время набора (не меньше декады),
+// деления — декады. Общая для вкладки Spectrum и вида «на трубе» (#MNT-1).
+static void spec_yscale(float mx, float tt, bool lg, float *ylo, float *yhi,
+                        double *t0, double *tstep, double *tend)
+{
+    *ylo = 0; *yhi = mx;
+    *t0 = 0; *tstep = nice_step(mx, 6); *tend = mx * 1.01;
+    if (lg) {
+        *yhi = log10f(mx) + 0.15f;
+        *ylo = -log10f(tt);
+        if (*ylo >= *yhi - 0.5f) *ylo = *yhi - 1;
+        *t0 = ceilf(*ylo);
+        *tstep = 1;
+        *tend = floorf(*yhi);
+    }
 }
 
 static void fmt_group(uint32_t v, char *out, size_t n)   // "2 071 344"
@@ -1907,8 +2210,13 @@ static void layout_status(void)
 static void dot_apply(void)
 {
     uint32_t col = !s_dot_conn ? COL_DOT_OFF : s_dot_acq ? COL_RED : COL_ACCENT;
-    lv_obj_set_style_bg_color(s_dot, lv_color_hex(col), 0);
-    lv_obj_set_style_bg_opa(s_dot, s_dot_conn && s_dot_acq && !s_dot_blink ? LV_OPA_20 : LV_OPA_COVER, 0);
+    lv_opa_t opa = s_dot_conn && s_dot_acq && !s_dot_blink ? LV_OPA_20 : LV_OPA_COVER;
+    lv_obj_t *const dots[2] = { s_dot, s_mnt_dot };   // #MNT-1: та же точка в виде «на трубе»
+    for (int i = 0; i < 2; i++) {
+        if (!dots[i]) continue;
+        lv_obj_set_style_bg_color(dots[i], lv_color_hex(col), 0);
+        lv_obj_set_style_bg_opa(dots[i], opa, 0);
+    }
 }
 
 static void render_rec(bool acq)
@@ -1999,21 +2307,12 @@ static void render_spectrum(bool valid, const char *msg)
     if (valid) {
         const spectrum_data_t *sp = s_saved_on ? s_saved : s_snap;   // #TFT-34: открытый файл или живой
         float tt = sp->total_time_sec > 0 ? (float)sp->total_time_sec : 1.0f;
-        float mx = build_columns(sp, tt);
+        float mx = build_columns(sp, tt, PLOT_W);
         if (mx <= 0) mx = 1;
         bool lg = s_spec_log;
-        float ylo = 0, yhi = mx;   // Lin веба: 0..пик, деления niceStep(mx, 6)
-        double t0 = 0, tstep = nice_step(mx, 6), tend = mx * 1.01;
-        if (lg) {
-            // Log веба (#UI-36): верх — пик с запасом 0.15 декады, пол — ОДИН
-            // отсчёт за время набора, не меньше одной декады; деления — декады.
-            yhi = log10f(mx) + 0.15f;
-            ylo = -log10f(tt);
-            if (ylo >= yhi - 0.5f) ylo = yhi - 1;
-            t0 = ceilf(ylo);
-            tstep = 1;
-            tend = floorf(yhi);
-        }
+        float ylo, yhi;
+        double t0, tstep, tend;
+        spec_yscale(mx, tt, lg, &ylo, &yhi, &t0, &tstep, &tend);
         for (double t = t0; t <= tend && ny < N_YLAB; t += tstep) {
             double v = lg ? pow(10, t) : t;
             int y = y_row((float)v, lg, ylo, yhi);
@@ -2159,6 +2458,39 @@ static bool mon_pull(void)
 
 // ---------------- мониторинг: отрисовка ----------------
 
+// Ряд графика (s_iv_n > 0): последние MON_VIEW интервалов -> s_m_raw, SMA -> s_m_sma,
+// шкала Y по ним +8 %. Общий для вкладки Monitor и вида «на трубе» (#MNT-1).
+// Возвращает число точек; start — индекс первой в s_iv.
+static int mon_series(int win, int *start_out, float *mn_out, float *mx_out)
+{
+    float *raw = s_m_raw, *sma = s_m_sma;
+    int start = s_iv_n > MON_VIEW ? s_iv_n - MON_VIEW : 0, cnt = s_iv_n - start;
+    // SMA trailing по всему ряду (smaAll веба): скользящая сумма от начала окна.
+    // #MON-5: в сумме до start — win интервалов [start-win, start-1], а не win-1:
+    // первая итерация вычитает s_iv[start-win]. Было start-win+1 — после 200
+    // интервалов (MON_VIEW) сумма теряла одно значение, SMA шла ниже raw на 1/win.
+    int a0 = start - win < 0 ? 0 : start - win;
+    double acc = 0;
+    for (int j = a0; j < start; j++) acc += (double)s_iv[j].counts / s_iv[j].dur;
+    float mn = 1e30f, mx = -1e30f;
+    for (int k = 0; k < cnt; k++) {
+        int i = start + k;
+        double v = (double)s_iv[i].counts / s_iv[i].dur;   // прибавляем ровно то, что потом вычтем
+        raw[k] = (float)v;
+        acc += v;
+        if (i - win >= 0) acc -= (double)s_iv[i - win].counts / s_iv[i - win].dur;
+        sma[k] = (float)(acc / (i + 1 < win ? i + 1 : win));
+        mn = fminf(mn, fminf(raw[k], sma[k]));
+        mx = fmaxf(mx, fmaxf(raw[k], sma[k]));
+    }
+    if (mx - mn < 1e-9f) mx = mn + 1;
+    float pad = (mx - mn) * 0.08f;
+    *start_out = start;
+    *mn_out = mn - pad;
+    *mx_out = mx + pad;
+    return cnt;
+}
+
 // Панель «Монитор». Формулы closeBucket()/drawChart() веба: cps = ΣN/Σt,
 // погрешность 100/√ΣN %, SMA — скользящее по всему ряду, масштаб Y — по
 // видимым точкам и SMA +8%, ось X — настенное время платы в поясе из веба
@@ -2206,29 +2538,9 @@ static void render_monitor(const char *msg)
         snprintf(txt, sizeof txt, "+/-%.2f%%", 100.0 / sqrt((double)(last->counts ? last->counts : 1)));
         lv_label_set_text(s_last_err, last->counts ? txt : "");
 
-        int start = s_iv_n > MON_VIEW ? s_iv_n - MON_VIEW : 0, cnt = s_iv_n - start;
-        // SMA trailing по всему ряду (smaAll веба): скользящая сумма от начала окна.
-        // #MON-5: в сумме до start — win интервалов [start-win, start-1], а не win-1:
-        // первая итерация вычитает s_iv[start-win]. Было start-win+1 — после 200
-        // интервалов (MON_VIEW) сумма теряла одно значение, SMA шла ниже raw на 1/win.
-        int a0 = start - win < 0 ? 0 : start - win;
-        double acc = 0;
-        for (int j = a0; j < start; j++) acc += (double)s_iv[j].counts / s_iv[j].dur;
-        float mn = 1e30f, mx = -1e30f;
-        for (int k = 0; k < cnt; k++) {
-            int i = start + k;
-            double v = (double)s_iv[i].counts / s_iv[i].dur;   // прибавляем ровно то, что потом вычтем
-            raw[k] = (float)v;
-            acc += v;
-            if (i - win >= 0) acc -= (double)s_iv[i - win].counts / s_iv[i - win].dur;
-            sma[k] = (float)(acc / (i + 1 < win ? i + 1 : win));
-            mn = fminf(mn, fminf(raw[k], sma[k]));
-            mx = fmaxf(mx, fmaxf(raw[k], sma[k]));
-        }
-        if (mx - mn < 1e-9f) mx = mn + 1;
-        float pad = (mx - mn) * 0.08f;
-        mn -= pad;
-        mx += pad;
+        int start;
+        float mn, mx;
+        int cnt = mon_series(win, &start, &mn, &mx);
 #define MY_OF(v) ((MCH_H - 1) - (int)(((v) - mn) / (mx - mn) * (MCH_H - 1) + 0.5f))
 
         // Сетка Y — 5 линий на равных долях диапазона, как в вебе (не niceStep).
@@ -2304,6 +2616,227 @@ static void render_monitor(const char *msg)
     for (int i = nx; i < N_MXLAB; i++) lv_obj_add_flag(s_mxlab[i], LV_OBJ_FLAG_HIDDEN);
     draw_frame(s_mon_buf, MCH_W, MCH_H);
     lv_obj_invalidate(s_mon_plot);
+}
+
+// ---------------- вид «на трубе» (#MNT-1) ----------------
+
+// #MNT-3: число CPS — самым крупным шрифтом, что помещается левее правой колонки
+// (батарея / CPS / доза), низом к графику. 104 px — до 3 цифр, 80 — 4, 64 — 5.
+// #MNT-4: размер прыгал — на ~1000 CPS число то 3, то 4 цифры, и шрифт менялся
+// каждую секунду. Теперь ширина — худшая для этого числа цифр (все «4», самая
+// широкая цифра), уменьшение — сразу, увеличение — если крупнее влезает 10 с подряд.
+#define MNT_FONT_UP_MS  10000
+static void mnt_layout_top(void)
+{
+    static const lv_font_t *const F[4] = { &font_cps104, &font_cps80, &font_cps64, &lv_font_montserrat_28 };
+    lv_obj_update_layout(s_mnt);
+    int col_x = MNT_PW;
+    lv_obj_t *const col[4] = { s_mnt_dot, s_mnt_batt, s_mnt_unit, s_mnt_dose };
+    for (int i = 0; i < 4; i++)
+        if (!lv_obj_has_flag(col[i], LV_OBJ_FLAG_HIDDEN) && lv_obj_get_width(col[i]) > 0 &&
+            lv_obj_get_x(col[i]) < col_x)
+            col_x = lv_obj_get_x(col[i]);
+    int maxw = col_x - 8 - 8;
+    char worst[16];
+    const char *txt = lv_label_get_text(s_mnt_cps);
+    int n = 0;
+    for (; txt[n] && n < (int)sizeof worst - 1; n++) worst[n] = (txt[n] >= '0' && txt[n] <= '9') ? '4' : txt[n];
+    worst[n] = '\0';
+    int fit = 3;
+    for (int i = 0; i < 3; i++) {
+        lv_point_t sz;
+        lv_txt_get_size(&sz, worst, F[i], 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        if (sz.x <= maxw) { fit = i; break; }
+    }
+    uint32_t now = lv_tick_get();
+    if (fit > s_mnt_fi) {                 // не влезает — мельче сразу
+        s_mnt_fi = fit;
+        s_mnt_up_since = 0;
+    } else if (fit < s_mnt_fi) {          // крупнее — только после паузы
+        if (!s_mnt_up_since) s_mnt_up_since = now ? now : 1;
+        else if (now - s_mnt_up_since >= MNT_FONT_UP_MS) { s_mnt_fi = fit; s_mnt_up_since = 0; }
+    } else {
+        s_mnt_up_since = 0;
+    }
+    const lv_font_t *f = F[s_mnt_fi];
+    lv_obj_set_style_text_font(s_mnt_cps, f, 0);
+    lv_obj_set_pos(s_mnt_cps, 8, MNT_TOP_H - lv_font_get_line_height(f));
+}
+
+// Крупное CPS и доза (если задан коэффициент, как в шапке). Под lvgl_port_lock.
+static void mnt_render_cps(bool valid)
+{
+    char txt[24];
+    if (valid) lv_label_set_text_fmt(s_mnt_cps, "%lu", (unsigned long)s_snap->cps);
+    else       lv_label_set_text(s_mnt_cps, "--");
+    float k = spectrogram_get_dose_k();
+    if (k > 0 && valid) {
+        snprintf(txt, sizeof txt, "%.3f uSv/h", (double)(s_snap->cps * k));
+        lv_label_set_text(s_mnt_dose, txt);
+        lv_obj_clear_flag(s_mnt_dose, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_mnt_dose, LV_OBJ_FLAG_HIDDEN);
+    }
+    mnt_layout_top();
+}
+
+// Батарея (как #batt-chip) и точка прибора у правого края. Под lvgl_port_lock.
+static void mnt_render_status(const battery_status_t *bs)
+{
+    if (bs->present) {
+        int pct = bs->percent < 0 ? 0 : bs->percent > 100 ? 100 : bs->percent;
+        lv_label_set_text_fmt(s_mnt_batt, "%s%d%%", bs->charging ? LV_SYMBOL_CHARGE : "", pct);
+        lv_obj_set_style_text_color(s_mnt_batt, lv_color_hex(pct < 20 ? COL_RED_TXT : pct < 50 ? COL_WARN : COL_CHIP_OK), 0);
+    } else {
+        lv_label_set_text(s_mnt_batt, "");
+    }
+    lv_obj_update_layout(s_mnt_batt);
+    lv_obj_align_to(s_mnt_dot, s_mnt_batt, LV_ALIGN_OUT_LEFT_MID, bs->present ? -8 : 0, 0);
+    mnt_layout_top();   // ширина батареи меняет место под число
+}
+
+#define MSPX(x, y) s_mnt_spec_buf[(y) * MNT_W + (x)]
+#define MMPX(x, y) s_mnt_mon_buf[(y) * MNT_W + (x)]
+
+// Спектр без подписей делений: сетка, заливка, линия — как render_spectrum(),
+// всегда живой (не открытый файл). Подпись справа: окно и шкала. Под lvgl_port_lock.
+static void mnt_render_spectrum(bool valid, const char *msg)
+{
+    char txt[40];
+    for (int i = 0; i < MNT_W * MNT_SPEC_H; i++) s_mnt_spec_buf[i] = s_c_bg;
+    if (valid) {
+        const spectrum_data_t *sp = s_snap;
+        float tt = sp->total_time_sec > 0 ? (float)sp->total_time_sec : 1.0f;
+        float mx = build_columns(sp, tt, MNT_W);
+        if (mx <= 0) mx = 1;
+        bool lg = s_spec_log;
+        float ylo, yhi;
+        double t0, tstep, tend;
+        spec_yscale(mx, tt, lg, &ylo, &yhi, &t0, &tstep, &tend);
+        for (double t = t0; t <= tend; t += tstep) {
+            int y = y_row_h((float)(lg ? pow(10, t) : t), lg, ylo, yhi, MNT_SPEC_H);
+            for (int x = 0; x < MNT_W; x++) MSPX(x, y) = s_c_grid;
+        }
+        const int range = SPEC_CH_TO - SPEC_CH_FROM + 1;
+        bool kev = sp->calib_valid;
+        double lo = kev ? ch2kev(sp, SPEC_CH_FROM) : SPEC_CH_FROM;
+        double hi = kev ? ch2kev(sp, SPEC_CH_TO + 1) : SPEC_CH_TO + 1;
+        double step = nice_step(hi, 6);
+        for (double k = 0; k <= hi * 1.01; k += step) {
+            if (k < lo) continue;
+            double ch = kev ? kev2ch(sp, k) : k;
+            int x = (int)((ch - SPEC_CH_FROM) / range * MNT_W + 0.5);
+            if (x < 0 || x >= MNT_W) continue;
+            for (int y = 0; y < MNT_SPEC_H; y++) MSPX(x, y) = s_c_grid;
+        }
+        int prev = y_row_h(s_col[0], lg, ylo, yhi, MNT_SPEC_H);
+        for (int x = 0; x < MNT_W; x++) {
+            int y = y_row_h(s_col[x], lg, ylo, yhi, MNT_SPEC_H);
+            if (y < MNT_SPEC_H - 1)
+                for (int yy = y; yy < MNT_SPEC_H; yy++)
+                    MSPX(x, yy) = MSPX(x, yy).full == s_c_grid.full ? s_c_fill_grid : s_c_fill;
+            int a = prev < y ? prev : y, b = prev < y ? y : prev;
+            for (int yy = a; yy <= b; yy++) MSPX(x, yy) = s_c_line;
+            prev = y;
+        }
+        if (kev) snprintf(txt, sizeof txt, "%.0f-%.0f keV, %s", lo, hi, lg ? "log" : "lin");
+        else     snprintf(txt, sizeof txt, "ch %d-%d, %s", SPEC_CH_FROM, SPEC_CH_TO, lg ? "log" : "lin");
+        lv_label_set_text(s_mnt_sinfo, txt);
+        lv_obj_clear_flag(s_mnt_sinfo, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_mnt_smsg, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_mnt_sinfo, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(s_mnt_smsg, msg ? msg : "");
+        lv_obj_clear_flag(s_mnt_smsg, LV_OBJ_FLAG_HIDDEN);
+    }
+    draw_frame(s_mnt_spec_buf, MNT_W, MNT_SPEC_H);
+    lv_obj_invalidate(s_mnt_spec);
+}
+
+// Монитор: та же сессия и тот же ряд, что вкладка Monitor (mon_series), точки —
+// равномерно по ширине; подписи — верх и низ шкалы и легенда. Под lvgl_port_lock.
+static void mnt_render_monitor(const char *msg)
+{
+    char txt[24];
+    for (int i = 0; i < MNT_W * MNT_MON_H; i++) s_mnt_mon_buf[i] = s_c_bg;
+    int win = s_ms.sma_win < MON_SMA_MIN ? MON_SMA_MIN : s_ms.sma_win;
+    lv_label_set_text_fmt(s_mnt_sma, "SMA %d", win);
+    lv_label_set_text_fmt(s_mnt_raw, "CPS %us", (unsigned)(s_ms.interval_s ? s_ms.interval_s : 1));
+    lv_obj_update_layout(s_mnt_sma);
+    lv_obj_align_to(s_mnt_raw, s_mnt_sma, LV_ALIGN_OUT_LEFT_MID, -10, 0);
+    if (s_iv_n == 0) {
+        lv_obj_add_flag(s_mnt_mhi, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_mnt_mlo, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(s_mnt_mmsg, msg);
+        lv_obj_clear_flag(s_mnt_mmsg, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        int start;
+        float mn, mx;
+        int cnt = mon_series(win, &start, &mn, &mx);
+        (void)start;
+#define MMY_OF(v) ((MNT_MON_H - 1) - (int)(((v) - mn) / (mx - mn) * (MNT_MON_H - 1) + 0.5f))
+        for (int g = 0; g <= 4; g++) {
+            int y = MMY_OF(mn + (mx - mn) * g / 4);
+            for (int x = 0; x < MNT_W; x++) MMPX(x, y) = s_c_mgrid;
+        }
+        for (int k = 0; k < cnt; k++) {
+            int x = cnt > 1 ? k * (MNT_W - 1) / (cnt - 1) : MNT_W / 2;
+            s_m_pr[k].x = s_m_ps[k].x = (lv_coord_t)x;
+            s_m_pr[k].y = (lv_coord_t)MMY_OF(s_m_raw[k]);
+            s_m_ps[k].y = (lv_coord_t)MMY_OF(s_m_sma[k]);
+        }
+#undef MMY_OF
+        lv_draw_line_dsc_t ld;
+        lv_draw_line_dsc_init(&ld);
+        ld.width = 2;
+        ld.color = lv_color_hex(COL_ACCENT);
+        if (cnt >= 2) lv_canvas_draw_line(s_mnt_mon, s_m_pr, cnt, &ld);
+        ld.color = lv_color_hex(COL_SMA);
+        if (cnt >= 2) lv_canvas_draw_line(s_mnt_mon, s_m_ps, cnt, &ld);
+        fmt_cps(mx, txt, sizeof txt);
+        lv_label_set_text(s_mnt_mhi, txt);
+        fmt_cps(mn, txt, sizeof txt);
+        lv_label_set_text(s_mnt_mlo, txt);
+        lv_obj_clear_flag(s_mnt_mhi, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(s_mnt_mlo, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_mnt_mmsg, LV_OBJ_FLAG_HIDDEN);
+    }
+    draw_frame(s_mnt_mon_buf, MNT_W, MNT_MON_H);
+    lv_obj_invalidate(s_mnt_mon);
+}
+
+// Включить/выключить вид «на трубе»: портрет и слой. lv_disp_set_rotation()
+// меняет размер экрана LVGL (480x320 <-> 320x480), перерисовывает всё и зовёт
+// lvgl_port_update_callback() — тот выставляет MADCTL панели из .rotation
+// (MV -> без MV, MX). Координаты тача LVGL поворачивает сам (lv_indev.c), в
+// touch_process() они остаются альбомными. Под lvgl_port_lock — кадр не идёт;
+// команду MADCTL esp_lcd отправляет, дождавшись переданных кусков кадра.
+// Объекты обычного вида при портрете частично за краем — их закрывает s_mnt.
+static void mount_set(bool on)
+{
+    s_mount = on;
+    if (on) lv_obj_clear_flag(s_mnt, LV_OBJ_FLAG_HIDDEN);
+    else    lv_obj_add_flag(s_mnt, LV_OBJ_FLAG_HIDDEN);
+    lv_disp_set_rotation(NULL, on ? MNT_ROT : LV_DISP_ROT_NONE);
+}
+
+static void mount_load(void)
+{
+    nvs_handle_t h;
+    uint8_t v = 0;
+    if (nvs_open("tft", NVS_READONLY, &h) != ESP_OK) return;
+    if (nvs_get_u8(h, "mount", &v) == ESP_OK) s_mount = v != 0;
+    nvs_close(h);
+}
+
+static void mount_save(void)   // tft_task: NVS — не из задачи LVGL (стек в PSRAM, #RAM-1)
+{
+    nvs_handle_t h;
+    if (nvs_open("tft", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, "mount", s_mount ? 1 : 0);
+        nvs_commit(h);
+        nvs_close(h);
+    }
 }
 
 // ---------------- водопад (#TFT-28) ----------------
@@ -2761,6 +3294,8 @@ static esp_err_t cal_save(const touch_cal_t *c)
 
 static void cal_start(void)   // под lvgl_port_lock
 {
+    // #MNT-1: крестики и калибровка — в обычном (альбомном) виде.
+    if (s_mount) { mount_set(false); mount_save(); }
     s_cal_idx = 0;
     s_cal_active = true;
     lv_obj_clear_flag(s_cal_layer, LV_OBJ_FLAG_HIDDEN);
@@ -2826,6 +3361,7 @@ bool tft_display_start_touch_cal(void)   // из веб-сервера: толь
 // #TFT-34: +1 КБ под чтение каталога и открытие файла с карты (было 6144,
 // свободно оставалось 3.3 КБ до появления экрана Files).
 #define TFT_TASK_STACK  7168
+#define VIEW_MNT        9       // #MNT-1: «вкладка» вида «на трубе» в tft_task
 
 static void toast_show(const char *txt, uint32_t col)   // под lvgl_port_lock
 {
@@ -2867,10 +3403,12 @@ static void action_cmd(uint8_t cmd)
 {
     char msg[48];
     uint32_t col = COL_ACCENT;
-    if (cmd == TFT_CMD_CLEAR && s_view == 1) {
+    bool spec = cmd == TFT_CMD_MNT_CLEAR;   // #MNT-3: свайп — всегда спектр, вкладка под слоем не важна
+    if (spec) cmd = TFT_CMD_CLEAR;
+    if (cmd == TFT_CMD_CLEAR && s_view == 1 && !spec) {
         monitor_session_clear();
         snprintf(msg, sizeof msg, "Monitoring session cleared");
-    } else if (cmd == TFT_CMD_CLEAR && s_view == 2) {
+    } else if (cmd == TFT_CMD_CLEAR && s_view == 2 && !spec) {
         // Как /api/waterfall/clear: во время записи плата стирать не даёт.
         if (spectrogram_clear() == 0) snprintf(msg, sizeof msg, "Waterfall cleared");
         else { snprintf(msg, sizeof msg, "Stop waterfall recording first"); col = COL_WARN; }
@@ -2952,7 +3490,7 @@ static void tft_task(void *arg)
             else if (s_view == 2) wf_cmd(cmd);
             else                  send_device_cmd(cmd);
         }
-        if (cmd == TFT_CMD_CLEAR || cmd == TFT_CMD_SAVE) action_cmd(cmd);
+        if (cmd == TFT_CMD_CLEAR || cmd == TFT_CMD_SAVE || cmd == TFT_CMD_MNT_CLEAR) action_cmd(cmd);
         if (cmd == TFT_CMD_CHWIN) chwin_apply();   // #TFT-29
         if (cmd == TFT_CMD_FILES) {               // #TFT-34: каталог читаем здесь, рисуем под замком
             int d = s_files_dir;
@@ -2969,6 +3507,37 @@ static void tft_task(void *arg)
             lv_obj_add_flag(s_saved_lbl, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(s_live_btn, LV_OBJ_FLAG_HIDDEN);
             lvgl_port_unlock();
+        }
+        if (cmd == TFT_CMD_ALARM_SAVE) {          // #ALM-1: пороги с экрана -> NVS
+            int r = cps_alarm_set_config(&s_alm_pend);
+            lvgl_port_lock(0);
+            toast_show(r == 0 ? (s_alm_pend.enabled ? "Alarm saved: ON" : "Alarm saved: OFF")
+                              : r == -1 ? "Thresholds must ascend" : "Applied, NOT saved (NVS)",
+                       r == 0 ? COL_ACCENT : COL_RED_TXT);
+            lvgl_port_unlock();
+        }
+        if (cmd == TFT_CMD_MNT_MON_CLEAR) {       // #MNT-5: как Clear на вкладке Monitor
+            monitor_session_clear();
+            ESP_LOGI(TAG, "свайп: сессия мониторинга очищена");
+            lvgl_port_lock(0);
+            toast_show("Monitoring cleared", COL_ACCENT);
+            lvgl_port_unlock();
+        }
+        if (cmd == TFT_CMD_MON_START) {           // #MNT-2: как Start на вкладке Monitor
+            if (!s_ms.running) {
+                monitor_cmd(TFT_CMD_START);
+            } else {
+                lvgl_port_lock(0);
+                toast_show("Monitoring is running", COL_DIM);
+                lvgl_port_unlock();
+            }
+        }
+        if (cmd == TFT_CMD_MOUNT) {               // #MNT-1: долгое нажатие в центре
+            lvgl_port_lock(0);
+            mount_set(!s_mount);
+            lvgl_port_unlock();
+            mount_save();
+            ESP_LOGI(TAG, "вид экрана: %s", s_mount ? "на трубе (180°)" : "обычный");
         }
         if (cmd == TFT_CMD_WIFI_SCAN) wifi_scan_run();         // #TFT-41
         if (cmd == TFT_CMD_WIFI_CONNECT) wifi_connect_run();
@@ -3013,7 +3582,7 @@ static void tft_task(void *arg)
         if (wall0 != last_wall0 || tz != last_tz) mon_changed = true;
         last_wall0 = wall0;
         last_tz = tz;
-        int view = s_view;
+        int view = s_mount ? VIEW_MNT : s_view;   // #MNT-1: под слоем вкладки не рисуем
         bool view_changed = view != last_view || cmd == TFT_CMD_SCALE || s_force_plot;   // Lin/Log, файл/Live — та же перерисовка
         s_force_plot = false;
         // #TFT-28: строки водопада тянем, только пока открыта его вкладка; на входе
@@ -3047,7 +3616,7 @@ static void tft_task(void *arg)
         } else {
             s_acq_hint = 0;
         }
-        int run = view == 0 ? acq : view == 1 ? s_ms.running : view == 2 ? s_wf_st.recording : 0;
+        int run = view == 0 ? acq : view == 1 ? s_ms.running : view == 2 ? s_wf_st.recording : 0;   // VIEW_MNT — 0
         bool rec_changed = (int)acq != last_acq || run != last_run;
         if (changed || mon_changed || wf_changed || view_changed || stat != last_stat || ip_changed || toast_due ||
             cpu_changed || rec_changed) {
@@ -3081,13 +3650,24 @@ static void tft_task(void *arg)
                 render_spectrum(pv, MSG[state]);
 #endif
             }
-            if (view == 1 && (mon_changed || view_changed || state != last_state)) {   // #TFT-32: не на каждый свип
+            if ((view == 1 || view == VIEW_MNT) && (mon_changed || view_changed || state != last_state)) {   // #TFT-32: не на каждый свип
+                bool mnt = view == VIEW_MNT;   // #MNT-1: кнопки Start там нет
                 if (state)                  snprintf(mon_wait, sizeof mon_wait, "%s", MSG[state]);
+                else if (mnt && !s_ms.running) snprintf(mon_wait, sizeof mon_wait, "Double tap to start monitoring");
                 else if (!s_ms.start_seq)   snprintf(mon_wait, sizeof mon_wait, "Stopped - press Start");
                 else if (s_ms.running)      snprintf(mon_wait, sizeof mon_wait, "Waiting for first %u s interval",
                                                      (unsigned)s_ms.interval_s);
                 else                        snprintf(mon_wait, sizeof mon_wait, "Stopped - no intervals");
-                render_monitor(mon_wait);
+                if (mnt) mnt_render_monitor(mon_wait);
+                else     render_monitor(mon_wait);
+            }
+            if (view == VIEW_MNT) {   // #MNT-1: крупное CPS — каждый свип, спектр — как вкладка
+                if (changed || view_changed) mnt_render_cps(valid);
+                if (stat != last_stat || view_changed) mnt_render_status(&bs);
+                if (view_changed || (changed && plot_due)) {
+                    last_plot = now;
+                    mnt_render_spectrum(valid, MSG[state]);
+                }
             }
             if (view == 2 && (wf_changed || view_changed)) wf_render();   // #TFT-28
             if (view == 3 && view_changed) conf_render();                   // #TFT-29
@@ -3133,6 +3713,7 @@ void tft_display_init(void)
 #else
     cal_load();             // #TFT-21: до регистрации тача — touch_process() читает s_tcal
     chwin_load();           // #TFT-29: окно каналов экрана из NVS
+    mount_load();           // #MNT-1: портрет при старте включает build_ui()
     panel_init();
     if (!s_panel) return;   // panel_init() уже залогировал причину
 #if TFT_ENABLE < 2

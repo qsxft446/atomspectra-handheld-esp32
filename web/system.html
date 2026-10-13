@@ -239,6 +239,17 @@ nav .on{ font-weight:600; color:#e8efe2; border-bottom:2px solid var(--accent); 
 
 <div style="display:flex;flex-direction:column;gap:14px">
 <section class="panel">
+<div class="ttl"><span style="color:var(--accent)">&#9654;</span> <span data-i18n="alm.title">Сигнализация CPS</span></div>
+<label class="boot-row"><input type="checkbox" id="alm-en"><span data-i18n="alm.enable">Включить сигнализацию</span></label>
+<div class="kv"><span data-i18n="alm.l1">Порог 1 · 1 писк</span><input type="number" id="alm-th0" min="1" step="1" style="width:130px;background:var(--panel);color:var(--txt);border:1px solid #444;padding:3px 6px;border-radius:4px"></div>
+<div class="kv"><span data-i18n="alm.l2">Порог 2 · 2 писка</span><input type="number" id="alm-th1" min="1" step="1" style="width:130px;background:var(--panel);color:var(--txt);border:1px solid #444;padding:3px 6px;border-radius:4px"></div>
+<div class="kv"><span data-i18n="alm.l3">Порог 3 · 3 писка</span><input type="number" id="alm-th2" min="1" step="1" style="width:130px;background:var(--panel);color:var(--txt);border:1px solid #444;padding:3px 6px;border-radius:4px"></div>
+<div class="kv"><span data-i18n="alm.l4">Порог 4 · частый писк</span><input type="number" id="alm-th3" min="1" step="1" style="width:130px;background:var(--panel);color:var(--txt);border:1px solid #444;padding:3px 6px;border-radius:4px"></div>
+<div class="mut" style="font-size:11px;line-height:1.5;margin-top:6px" data-i18n="alm.hint">По CPS за 1 с, только пока идёт набор. Уровень — старший превышенный порог, пороги по возрастанию. Спикер — GPIO21 через транзистор; число CPS на экране мигает красным. Действует сразу.</div>
+<button class="btn green" onclick="saveAlarm()" data-i18n="alm.save">Сохранить</button>
+<div class="mut" id="alm-status" style="font-size:11px;margin-top:5px;text-align:center;min-height:14px"></div>
+</section>
+<section class="panel">
 <div class="ttl"><span style="color:var(--accent)">&#8644;</span> <span data-i18n="tcp.title">TCP-мост (serial-over-WiFi)</span></div>
 <div class="kv"><span data-i18n="tcp.port">Порт</span><span>8234</span></div>
 <div class="kv"><span data-i18n="wifi.state">Состояние</span><span id="tcp-state">—</span></div>
@@ -323,6 +334,7 @@ var DICT={
   "confirm.rebootDev":"Перезагрузить прибор?","confirm.rebootEsp":"Перезагрузить ESP32?","confirm.resetWifi":"Сбросить WiFi и войти в режим настройки?",
   "field.title":"Полевой режим · Время","field.mode":"Режим сети","field.apSsid":"Точка доступа","field.apClients":"Подключено телефонов","field.timeSrc":"Источник времени","field.setTime":"Установить время с телефона","field.timeHint":"В полевом режиме (без интернета) время берётся с телефона. Кнопка задаёт его вручную.","field.apPassTitle":"Пароль полевой точки доступа","field.apPassSave":"Сменить пароль AP (перезагрузка)","field.modeSta":"Домашняя сеть (Indoor)","field.modeAp":"Полевой AP (Outdoor)","field.modeSetup":"Настройка","field.modeApForced":"Outdoor (полевой AP, принудительно)","field.modeApFallback":"Outdoor (полевой AP, fallback)","field.passDefaultWarn":"Пароль AP — публичный по умолчанию; для людных мест смени пароль.","field.srcNone":"нет (1970)","field.srcBrowser":"браузер (авто)","field.srcManual":"ручной","field.srcRtc":"часы DS3231","field.rtc":"Часы DS3231","field.rtcNo":"не найдены","field.rtcOk":"хранят время","field.rtcInvalid":"время сбито — задайте с телефона","field.passChanged":"Пароль сохранён, перезагрузка...","field.passShort":"Минимум 8 символов","field.confirmPass":"Сменить пароль точки доступа? Плата перезагрузится.","mode.toIndoor":"Вернуться в Indoor","mode.toOutdoor":"Переключить в Outdoor","mode.confirmOut":"Переключить в полевой режим (Outdoor)? Плата перезагрузится, поднимет точку доступа AtomSpectra-Outdoor, текущее подключение прервётся.","mode.confirmIn":"Вернуться в домашний режим (Indoor)? Плата перезагрузится и подключится к домашней сети.",
   "up.d":"д","up.h":"ч","up.m":"м","up.s":"с",
+  "alm.title":"Сигнализация CPS","alm.enable":"Включить сигнализацию","alm.l1":"Порог 1 · 1 писк","alm.l2":"Порог 2 · 2 писка","alm.l3":"Порог 3 · 3 писка","alm.l4":"Порог 4 · частый писк","alm.hint":"По CPS за 1 с, только пока идёт набор. Уровень — старший превышенный порог, пороги по возрастанию. Спикер — GPIO21 через транзистор; число CPS на экране мигает красным. Действует сразу.","alm.save":"Сохранить","alm.saved":"Сохранено","alm.saveErr":"Ошибка сохранения","alm.order":"Пороги — целые числа от 1, строго по возрастанию",
   "tc":"TC"
  },
  en:{
@@ -383,6 +395,7 @@ var DICT={
   "confirm.rebootDev":"Reboot device?","confirm.rebootEsp":"Reboot ESP32?","confirm.resetWifi":"Reset WiFi and enter setup mode?",
   "field.title":"Field mode · Time","field.mode":"Network mode","field.apSsid":"Access point","field.apClients":"Phones connected","field.timeSrc":"Time source","field.setTime":"Set time from phone","field.timeHint":"In field mode (no internet) the time comes from the phone. This button sets it manually.","field.apPassTitle":"Field access point password","field.apPassSave":"Change AP password (reboot)","field.modeSta":"Home network (Indoor)","field.modeAp":"Field AP (Outdoor)","field.modeSetup":"Setup","field.modeApForced":"Outdoor (field AP, forced)","field.modeApFallback":"Outdoor (field AP, fallback)","field.passDefaultWarn":"AP password is public by default; change it for crowded places.","field.srcNone":"none (1970)","field.srcBrowser":"browser (auto)","field.srcManual":"manual","field.srcRtc":"DS3231 clock","field.rtc":"DS3231 clock","field.rtcNo":"not found","field.rtcOk":"keeping time","field.rtcInvalid":"time lost — set it from the phone","field.passChanged":"Password saved, rebooting...","field.passShort":"Minimum 8 characters","field.confirmPass":"Change access point password? The board will reboot.","mode.toIndoor":"Switch to Indoor","mode.toOutdoor":"Switch to Outdoor","mode.confirmOut":"Switch to field mode (Outdoor)? The board will reboot, bring up the AtomSpectra-Outdoor access point, and the current connection will drop.","mode.confirmIn":"Return to home mode (Indoor)? The board will reboot and connect to the home network.",
   "up.d":"d","up.h":"h","up.m":"m","up.s":"s",
+  "alm.title":"CPS alarm","alm.enable":"Enable alarm","alm.l1":"Threshold 1 · 1 beep","alm.l2":"Threshold 2 · 2 beeps","alm.l3":"Threshold 3 · 3 beeps","alm.l4":"Threshold 4 · fast beeping","alm.hint":"By CPS per 1 s, only while acquiring. Level is the highest exceeded threshold; thresholds ascending. Speaker on GPIO21 via a transistor; the CPS value on the display flashes red. Applies immediately.","alm.save":"Save","alm.saved":"Saved","alm.saveErr":"Save failed","alm.order":"Thresholds: integers from 1, strictly ascending",
   "tc":"TC"
  }
 };
@@ -694,6 +707,26 @@ async function loadBootConfig(){
   document.getElementById("bc-cal-al").checked=!!r.calib_always;   // #CAL-1
  }catch(e){}
 }
+// #ALM-1: сигнализация превышения порогов CPS (GET/POST /api/alarm).
+async function loadAlarm(){
+ try{
+  var r=await(await fetch("/api/alarm")).json();
+  document.getElementById("alm-en").checked=!!r.enabled;
+  for(var i=0;i<4;i++)document.getElementById("alm-th"+i).value=r.th[i];
+ }catch(e){}
+}
+async function saveAlarm(){
+ var s=document.getElementById("alm-status"),th=[],i;
+ for(i=0;i<4;i++)th.push(parseInt(document.getElementById("alm-th"+i).value,10));
+ for(i=0;i<4;i++)if(!(th[i]>=1)||(i&&th[i]<=th[i-1])){s.textContent=t("alm.order");s.style.color="#ff8a82";return;}
+ try{
+  var r=await(await post("/api/alarm",{headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({enabled:document.getElementById("alm-en").checked,th:th})})).json();
+  s.textContent=r.ok?t("alm.saved"):(r.err==="order"?t("alm.order"):t("alm.saveErr"));
+  s.style.color=r.ok?"var(--accent)":"#ff8a82";
+ }catch(e){s.textContent=t("alm.saveErr");s.style.color="#ff8a82";}
+ setTimeout(function(){s.textContent="";},2500);
+}
 async function saveBootConfig(statusId){
  var s=document.getElementById(statusId||"bc-status-spec");
  var body={
@@ -859,6 +892,7 @@ async function clearDoseCurve(statusId){
  await refreshDevice();
  await refreshSpectrum();
  await loadBootConfig();
+ loadAlarm();   // #ALM-1
  await loadDoseK();
  await loadDoseCurveStatus();
  setInterval(refreshSystem,2000);

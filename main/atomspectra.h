@@ -225,6 +225,8 @@ bool spectrum_get_snapshot(spectrum_data_t *out);
 // #MON-1: атомарная пара (total_counts, total_time_sec) под коммит-локом —
 // для монитора CPS; НЕ копирует 32 КБ bins (в отличие от spectrum_get_snapshot).
 void spectrum_get_totals(uint32_t *counts, uint32_t *time_sec);
+// #ALM-1: CPS последнего свипа и время набора под тем же локом; true — спектр есть.
+bool spectrum_get_cps(uint32_t *cps, uint32_t *time_sec);
 const device_info_t   *spectrum_get_device_info(void);
 int  spectrum_save_to_flash(void);  // >=0 idx; -1 нет валидного спектра; -2 мало места; -3 ошибка FS (#FW-24); -4 нет SD-карты (#SD-5)
 int  spectrum_load_from_flash(int index, spectrum_data_t *out);

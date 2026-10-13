@@ -31,6 +31,11 @@ The screen is a mini copy of the web UI (LVGL 8):
   password on an on-screen keyboard, checked before saving), channel window.
 - **Start / Stop** (one button that follows the state), Clear, Save, **Files** — browse
   the card and open saved spectra on the plot.
+- **"On the tube" view** — for a unit clamped to the spectrometer tube: a long press in
+  the centre of the screen switches to portrait orientation with a large CPS value, the
+  monitoring chart and the spectrum. Double tap on the monitoring chart starts monitoring,
+  on the spectrum toggles Lin/Log; a right-to-left swipe clears the spectrum or the
+  monitoring (independently).
 - 5-point touch calibration (web UI "System" page).
 
 ![Board with the display](images/handheld-display.jpg)
@@ -50,6 +55,10 @@ The screen is a mini copy of the web UI (LVGL 8):
 - The clock is corrected from SNTP or the browser when available.
 
 ### And also
+
+- **CPS threshold alarm** — 4 thresholds, buzzer on GPIO21: one, two, three beeps with a
+  1 s pause, or fast beeping at level 4; the CPS value on the screen flashes red.
+  Thresholds are set on the "System" page or on the device (Conf → Alarm).
 
 - **microSD** (display module slot): saved spectra, waterfall segments, monitoring
   sessions (CSV), autosave of the live spectrum. No user data goes to internal flash —
@@ -75,6 +84,7 @@ The screen is a mini copy of the web UI (LVGL 8):
 | FT6336U touch (I2C) | SDA 8, SCL 9, RST 7, INT 15, address 0x38 |
 | BQ25895 charger (I2C) | SDA 8, SCL 9, address 0x6A |
 | DS3231 clock (I2C) | SDA 8, SCL 9, address 0x68; **3.3 V** supply |
+| CPS alarm buzzer | GPIO21 (piezo via 150 Ω, magnetic via a transistor) |
 | WS2812 RGB LED | GPIO48 |
 
 ![Wiring: ESP32-S3, charger, clock](images/handheld-back.jpg)

@@ -44,7 +44,7 @@ static uint32_t s_cap;       // фактическая ёмкость кольц
 static uint32_t s_head;      // индекс, куда ляжет следующий сэмпл
 static uint32_t s_count;     // занято сэмплов (<= s_cap)
 static uint32_t s_last_seq;  // seq последнего записанного (0 = ещё ничего → первый сэмпл seq=1)
-static uint32_t s_epoch;     // эпоха серии; растёт при откате счётчиков прибора
+static uint32_t s_epoch;     // эпоха серии: случайная на старте платы (#MON-7: сброс спектра её не меняет)
 static monitor_session_t s_sess;   // #MON-2: под s_lock, как и кольцо
 
 // Писатель — monitor_task (1 сэмпл/с), читатель — httpd-воркер. Лок держится
@@ -79,26 +79,6 @@ static void ring_push(uint32_t end_sec, uint32_t dcounts, uint16_t dur)
     xSemaphoreGive(s_lock);
 }
 
-// Откат счётчиков (сброс спектра -rst / рестарт прибора): новая эпоха, кольцо
-// очищается. seq НЕ обнуляется — монотонен через эпохи, клиенту так проще.
-// #MON-2: идущая сессия продолжается с нового места (как было в вебе:
-// handleEpoch), остановленная — снимается: её сэмплов в кольце больше нет.
-static void ring_new_epoch(void)
-{
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_epoch++;
-    s_count = 0;
-    s_head  = 0;
-    s_sess.rev++;
-    if (s_sess.running) {
-        s_sess.start_seq = s_last_seq + 1;
-    } else {
-        s_sess.start_seq = 0;
-        s_sess.stop_seq  = 0;
-    }
-    xSemaphoreGive(s_lock);
-    ESP_LOGW(TAG, "counters rollback -> epoch %" PRIu32 ", ring cleared", s_epoch);
-}
 
 size_t monitor_copy_since(uint32_t since, monitor_sample_t *out, size_t max,
                           uint32_t *out_first_seq, uint32_t *out_next_seq,
@@ -208,6 +188,7 @@ static void monitor_task(void *arg)
 {
     (void)arg;
     uint32_t prev_counts = 0, prev_time = 0;
+    uint32_t t_off = 0;   // #MON-7: end_sec ряда = наборное время + t_off (непрерывно через сбросы)
     bool prev_valid = false;
     for (;;) {
         // Будимся коммитом свипа (паттерн wf_task); 1500 мс — fallback-тик при
@@ -225,8 +206,14 @@ static void monitor_task(void *arg)
             continue;
         }
         if (counts < prev_counts || tsec < prev_time) {
-            // Откат счётчиков = сброс спектра или рестарт прибора → новая эпоха.
-            ring_new_epoch();
+            // Откат счётчиков = сброс спектра (-rst, Clear, свайп экрана) или рестарт
+            // прибора. #MON-7 (запрос 2026-10-13): мониторинг это НЕ сбрасывает — ряд
+            // CPS и сессия идут дальше. Раньше была новая эпоха: кольцо очищалось,
+            // сессия начиналась заново, и Clear спектра стирал график мониторинга.
+            // Свип сброса пропускаем (приращения не узнать), наборное время ряда
+            // продолжается с прежнего места — end_sec монотонен для веба и экрана.
+            t_off = prev_time + t_off - tsec;
+            ESP_LOGI(TAG, "counters rollback: series continues (time offset %" PRIu32 " s)", t_off);
             prev_counts = counts; prev_time = tsec;
             continue;
         }
@@ -238,7 +225,7 @@ static void monitor_task(void *arg)
             prev_counts = counts; prev_time = tsec;
             continue;
         }
-        ring_push(tsec, counts - prev_counts, (uint16_t)dur);
+        ring_push(tsec + t_off, counts - prev_counts, (uint16_t)dur);
         prev_counts = counts; prev_time = tsec;
     }
 }
