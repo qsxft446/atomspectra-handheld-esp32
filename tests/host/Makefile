@@ -11,7 +11,7 @@ CFLAGS ?= -std=c11 -Wall -Wextra -Werror -O2 -I../../components/shproto/include 
 SRCS = test_shproto.c test_roundtrip.c ../../components/shproto/shproto.c \
        test_net_time.c ../../main/net_time.c
 
-test: $(SRCS) test_util.h alarm
+test: $(SRCS) test_util.h alarm autocal
 	$(CC) $(CFLAGS) -o test_runner $(SRCS)
 	./test_runner
 
@@ -20,6 +20,11 @@ alarm: test_alarm_seq.c ../../main/alarm_seq.h
 	$(CC) $(CFLAGS) -o test_alarm_seq test_alarm_seq.c
 	./test_alarm_seq
 
+# #ACAL-1: автокалибровка по Ra-226 на реальных спектрах (data/ra226_*.txt).
+autocal: test_autocal.c ../../main/autocal.c ../../main/autocal.h
+	$(CC) $(CFLAGS) -o test_autocal test_autocal.c ../../main/autocal.c -lm
+	./test_autocal
+
 # Дополнительный прогон под санитайзерами: даже если canary-проверка пропустит
 # регрессию с записью за границу буфера, ASan поймает её жёстко.
 asan: $(SRCS) test_util.h
@@ -27,6 +32,6 @@ asan: $(SRCS) test_util.h
 	./test_runner_asan
 
 clean:
-	rm -f test_runner test_runner_asan test_alarm_seq
+	rm -f test_runner test_runner_asan test_alarm_seq test_autocal
 
-.PHONY: test asan clean alarm
+.PHONY: test asan clean alarm autocal

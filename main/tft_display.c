@@ -15,6 +15,7 @@
 //   Каждое лечится ОДНОЙ строкой в этом файле, помечено соответствующим тегом.
 
 #include "cps_alarm.h"   // #ALM-1
+#include "autocal.h"     // #ACAL-1
 #include "tft_display.h"
 #include "board_i2c.h"
 #include "board_spi.h"      // #SD-1: общие выводы SPI дисплея и SD-карты
@@ -278,6 +279,7 @@ static lv_obj_t *s_tab_btn[4], *s_toast;   // #TFT-29: 4 вкладки; #TFT-36
 static lv_obj_t *s_tabs, *s_acts, *s_act_save, *s_confirm, *s_confirm_txt;
 static lv_obj_t *s_wifi;   // #TFT-41: экран WiFi (lv_layer_top), NULL — закрыт
 static lv_obj_t *s_alm;    // #ALM-1: экран порогов сигнализации (lv_layer_top), NULL — закрыт
+static lv_obj_t *s_acal;   // #ACAL-1: экран автокалибровки (lv_layer_top), NULL — закрыт
 // #TFT-29: Start и «•••» скрываются на вкладке Conf; окно подтверждения общее —
 // текст и надпись кнопки задаёт вызвавший, команда уходит в tft_task.
 static lv_obj_t *s_btn_start, *s_btn_more, *s_confirm_ok_lbl;
@@ -342,7 +344,8 @@ enum { TFT_CMD_START = 1, TFT_CMD_STOP, TFT_CMD_VIEW, TFT_CMD_CAL, TFT_CMD_CAL_D
        TFT_CMD_MON_START,     // #MNT-2
        TFT_CMD_MNT_CLEAR,     // #MNT-3: свайп по спектру — очистка спектра (не по вкладке)
        TFT_CMD_MNT_MON_CLEAR,
-       TFT_CMD_ALARM_SAVE };   // #ALM-1: пороги с экрана -> NVS (tft_task)   // #MNT-5: свайп по графику мониторинга — очистка сессии   // #TFT-41   // #TFT-34   // #TFT-29: после подтверждения / отпускания ползунка   // #TFT-27: CLEAR — уже после подтверждения
+       TFT_CMD_ALARM_SAVE,
+       TFT_CMD_ACAL_START };   // #ACAL-3: -rst/-sta автокалибровки шлёт tft_task   // #ALM-1: пороги с экрана -> NVS (tft_task)   // #MNT-5: свайп по графику мониторинга — очистка сессии   // #TFT-41   // #TFT-34   // #TFT-29: после подтверждения / отпускания ползунка   // #TFT-27: CLEAR — уже после подтверждения
 static bool          s_ui_ok;       // экран поднят полностью (для веба)
 static bool          s_lvgl_up;     // #SD-2: порт LVGL запущен — шина SPI занята его кадрами
 static QueueHandle_t s_cmd_q;
@@ -710,7 +713,7 @@ static void tp_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
         // #MNT-1: долгое нажатие в центре — смена вида. Нажатие у объекта под
         // пальцем снимается (PRESS_LOST, без CLICKED). Не при открытых окнах
         // (подтверждение, WiFi: под пальцем клавиатура) и не при калибровке.
-        if (ev.lp && !s_cal_active && !s_wifi && !s_alm && lv_obj_has_flag(s_confirm, LV_OBJ_FLAG_HIDDEN)) {
+        if (ev.lp && !s_cal_active && !s_wifi && !s_alm && !s_acal && lv_obj_has_flag(s_confirm, LV_OBJ_FLAG_HIDDEN)) {
             lv_indev_wait_release(s_indev);
             uint8_t cmd = TFT_CMD_MOUNT;
             xQueueSend(s_cmd_q, &cmd, 0);
@@ -1630,6 +1633,256 @@ static void alm_blink_cb(lv_timer_t *t)
     if (s_mnt_cps) lv_obj_set_style_text_color(s_mnt_cps, lv_color_hex(col), 0);
 }
 
+// ---------------- #ACAL-1: автокалибровка по Ra-226 (Conf -> Calibrate) ----------------
+// Запрос 2026-10-14: «поднесите источник — прибор набирает и сам калибруется».
+// Выбор пользователя: спектр перед калибровкой очищается; набор — пока не хватит
+// статистики, не дольше 5 мин; результат с отличиями от текущей калибровки и
+// Apply/Discard; пока только Ra-226. Алгоритм — main/autocal.c (host-тест на
+// реальных спектрах). Ведёт отдельная задача acal: анализ берёт ~2.5 КБ стека,
+// у tft_task запас ~3.5 КБ во внутренней RAM; стек acal — в PSRAM (#RAM-1: во флеш
+// задача не пишет; spectrum_set_calibration() лишь взводит флаг, сохраняет main loop).
+#define ACAL_MAX_S      300     // набор не дольше 5 мин
+#define ACAL_MIN_S      30      // раньше не анализировать
+#define ACAL_TRY_S      10      // анализ раз в 10 с
+enum { ACAL_IDLE, ACAL_RUN, ACAL_DONE, ACAL_FAIL };
+static volatile int      s_acal_state;
+static volatile bool     s_acal_cancel;
+static TaskHandle_t      s_acal_task;
+static spectrum_data_t  *s_acal_snap;     // PSRAM
+static float            *s_acal_ws;       // PSRAM, 2 * SPECTRUM_CHANNELS
+static autocal_result_t *s_acal_res;      // PSRAM
+static double            s_acal_old[CALIB_COEFFS];
+static int               s_acal_old_order;
+static bool              s_acal_old_valid;
+static char              s_acal_msg[200]; // статус/причина — под замком LVGL
+static volatile bool     s_acal_cmd_fail;  // #ACAL-3: tft_task не смог отправить -rst/-sta
+static lv_obj_t *s_acal_txt, *s_acal_tbl, *s_acal_main, *s_acal_close;
+
+static double acal_inv(const double *c, int order, double e)
+{
+    double lo = 0, hi = SPECTRUM_CHANNELS - 1;
+    for (int i = 0; i < 50; i++) {
+        double m = (lo + hi) / 2;
+        if (autocal_eval(c, order, m) < e) lo = m; else hi = m;
+    }
+    return (lo + hi) / 2;
+}
+
+static void acal_btn(lv_obj_t *b, const char *txt, bool show)
+{
+    if (!b) return;
+    if (show) lv_obj_clear_flag(b, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(lv_obj_get_child(b, 0), txt);
+}
+
+static void acal_render(void)   // под замком LVGL
+{
+    if (!s_acal) return;
+    int st = s_acal_state;
+    if (st == ACAL_IDLE) {
+        lv_label_set_text(s_acal_txt, "Place the Ra-226 source near the detector and press Start.\n"
+                                      "The spectrum will be cleared. Acquisition: until enough counts, max 5 min.");
+    } else if (st == ACAL_DONE) {
+        const autocal_result_t *r = s_acal_res;
+        char k40[24], cs[24];
+        if (s_acal_old_valid) {
+            snprintf(k40, sizeof k40, "%.0f", autocal_eval(s_acal_old, s_acal_old_order, acal_inv(r->coeffs, r->order, 1460.82)));
+            snprintf(cs, sizeof cs, "%.0f", autocal_eval(s_acal_old, s_acal_old_order, acal_inv(r->coeffs, r->order, 661.66)));
+        } else {
+            snprintf(k40, sizeof k40, "-");
+            snprintf(cs, sizeof cs, "-");
+        }
+        snprintf(s_acal_msg, sizeof s_acal_msg,
+                 "Found %d lines, polynomial deg %d, error rms %.1f / max %.1f keV.\n"
+                 "Current scale shows K-40 1460.8 at %s keV, Cs-137 661.7 at %s keV.",
+                 r->n, r->order, r->rms_kev, r->max_abs_kev, k40, cs);
+        lv_label_set_text(s_acal_txt, s_acal_msg);
+    } else {
+        lv_label_set_text(s_acal_txt, s_acal_msg);
+    }
+    lv_obj_set_style_text_color(s_acal_txt, lv_color_hex(st == ACAL_FAIL ? COL_RED_TXT : COL_TXT), 0);
+    if (st == ACAL_DONE) {
+        const autocal_result_t *r = s_acal_res;
+        lv_table_set_row_cnt(s_acal_tbl, r->n + 1);
+        lv_table_set_cell_value(s_acal_tbl, 0, 0, "Line");
+        lv_table_set_cell_value(s_acal_tbl, 0, 1, "Ch");
+        lv_table_set_cell_value(s_acal_tbl, 0, 2, "New, keV");
+        lv_table_set_cell_value(s_acal_tbl, 0, 3, "Now, keV");
+        // #ACAL-2: числа — через snprintf (newlib). printf LVGL собран без float
+        // (LV_SPRINTF_DISABLE_FLOAT): lv_table_set_cell_value_fmt("%.1f") давал «f».
+        char cell[32];
+        for (int i = 0; i < r->n; i++) {
+            lv_table_set_cell_value(s_acal_tbl, i + 1, 0, r->name[i]);
+            snprintf(cell, sizeof cell, "%.0f", r->ch[i]);
+            lv_table_set_cell_value(s_acal_tbl, i + 1, 1, cell);
+            snprintf(cell, sizeof cell, "%.1f (%+.1f)", r->fit_kev[i], r->fit_kev[i] - r->kev[i]);
+            lv_table_set_cell_value(s_acal_tbl, i + 1, 2, cell);
+            if (s_acal_old_valid) snprintf(cell, sizeof cell, "%.1f", autocal_eval(s_acal_old, s_acal_old_order, r->ch[i]));
+            else                  snprintf(cell, sizeof cell, "-");
+            lv_table_set_cell_value(s_acal_tbl, i + 1, 3, cell);
+        }
+        lv_obj_clear_flag(s_acal_tbl, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_acal_tbl, LV_OBJ_FLAG_HIDDEN);
+    }
+    acal_btn(s_acal_main, st == ACAL_DONE ? LV_SYMBOL_OK " Apply" : st == ACAL_FAIL ? LV_SYMBOL_REFRESH " Retry"
+                                                                                      : LV_SYMBOL_PLAY " Start",
+             st != ACAL_RUN);
+    acal_btn(s_acal_close, st == ACAL_RUN ? LV_SYMBOL_STOP " Stop" : st == ACAL_DONE ? "Discard" : LV_SYMBOL_CLOSE " Close",
+             true);
+}
+
+static void acal_close(void)
+{
+    if (!s_acal) return;
+    lv_obj_del_async(s_acal);   // из событий его же кнопок — только async
+    s_acal = NULL;
+    s_acal_txt = s_acal_tbl = s_acal_main = s_acal_close = NULL;
+}
+
+static void acal_main_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_acal_state == ACAL_DONE) {
+        spectrum_set_calibration(s_acal_res->coeffs, s_acal_res->order);   // сохранит main loop
+        ESP_LOGI(TAG, "#ACAL-1: калибровка применена: %d линий, степень %d, rms %.2f кэВ",
+                 s_acal_res->n, s_acal_res->order, s_acal_res->rms_kev);
+        s_acal_state = ACAL_IDLE;
+        acal_close();
+        toast_show("Calibration applied", COL_ACCENT);
+        return;
+    }
+    if (s_acal_state == ACAL_RUN || !s_acal_task) return;
+    s_acal_state = ACAL_RUN;
+    snprintf(s_acal_msg, sizeof s_acal_msg, "Clearing the spectrum, starting acquisition...");
+    acal_render();
+    // #ACAL-3: команды прибору — в tft_task (стек во внутренней RAM), он же будит acal_task.
+    uint8_t cmd = TFT_CMD_ACAL_START;
+    if (xQueueSend(s_cmd_q, &cmd, 0) != pdTRUE) {
+        s_acal_state = ACAL_FAIL;
+        snprintf(s_acal_msg, sizeof s_acal_msg, "Busy, try again.");
+        acal_render();
+    }
+}
+
+static void acal_close_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_acal_state == ACAL_RUN) s_acal_cancel = true;   // задача вернёт IDLE
+    else s_acal_state = ACAL_IDLE;                         // Discard / Close
+    acal_close();
+}
+
+static void acal_open_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_acal || !s_acal_res) return;
+    if (s_acal_state != ACAL_RUN) s_acal_state = ACAL_IDLE;
+    lv_obj_t *w = s_acal = mk_rect(lv_layer_top(), 0, 0, TFT_H_RES, TFT_V_RES, COL_BG);
+    lv_obj_add_flag(w, LV_OBJ_FLAG_CLICKABLE);   // касания не уходят к экрану под ним
+    mk_label(w, 12, 12, &lv_font_montserrat_16, COL_TXT, LV_SYMBOL_SETTINGS "  Energy calibration: Ra-226");
+    s_acal_txt = mk_label(w, 12, 42, &lv_font_montserrat_14, COL_TXT, "");
+    lv_obj_set_width(s_acal_txt, TFT_H_RES - 24);
+    lv_label_set_long_mode(s_acal_txt, LV_LABEL_LONG_WRAP);
+    s_acal_tbl = lv_table_create(w);
+    lv_obj_set_pos(s_acal_tbl, 0, 100);
+    lv_obj_set_size(s_acal_tbl, TFT_H_RES, 172);
+    lv_table_set_col_cnt(s_acal_tbl, 4);
+    lv_table_set_col_width(s_acal_tbl, 0, 150);
+    lv_table_set_col_width(s_acal_tbl, 1, 70);
+    lv_table_set_col_width(s_acal_tbl, 2, 140);
+    lv_table_set_col_width(s_acal_tbl, 3, TFT_H_RES - 360);
+    lv_obj_set_style_bg_color(s_acal_tbl, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_border_width(s_acal_tbl, 0, 0);
+    lv_obj_set_style_pad_all(s_acal_tbl, 0, 0);
+    lv_obj_set_style_radius(s_acal_tbl, 0, 0);
+    lv_obj_set_style_bg_color(s_acal_tbl, lv_color_hex(COL_PANEL), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(s_acal_tbl, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(s_acal_tbl, lv_color_hex(COL_TXT), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(s_acal_tbl, &lv_font_montserrat_14, LV_PART_ITEMS);
+    lv_obj_set_style_border_color(s_acal_tbl, lv_color_hex(COL_BD), LV_PART_ITEMS);
+    lv_obj_set_style_border_width(s_acal_tbl, 1, LV_PART_ITEMS);
+    lv_obj_set_style_border_side(s_acal_tbl, LV_BORDER_SIDE_BOTTOM, LV_PART_ITEMS);
+    lv_obj_set_style_pad_ver(s_acal_tbl, 4, LV_PART_ITEMS);
+    lv_obj_set_style_pad_hor(s_acal_tbl, 6, LV_PART_ITEMS);
+    s_acal_main = mk_button(w, 12, 280, 150, "", COL_ACCENT, COL_ACCENT, LV_OPA_20, acal_main_cb, 0);
+    s_acal_close = mk_button(w, TFT_H_RES - 12 - 150, 280, 150, "", COL_DIM, COL_TXT, LV_OPA_10, acal_close_cb, 0);
+    acal_render();
+}
+
+static const char *acal_reason(int err)
+{
+    switch (err) {
+    case AUTOCAL_E_NODATA: return "Too few counts. Is the source close to the detector?";
+    case AUTOCAL_E_NOPAIR: return "Ra-226 lines (352 / 609 keV) not found. Move the source closer and retry.";
+    case AUTOCAL_E_FEW:    return "Too few Ra-226 lines found. Move the source closer and retry.";
+    case AUTOCAL_E_FIT:    return "Calibration fit failed. Retry with a longer acquisition.";
+    default:               return "Calibration failed.";
+    }
+}
+
+static void acal_task(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);   // будит tft_task после -rst/-sta (#ACAL-3)
+        s_acal_cancel = false;
+        const char *why = NULL;
+        // #ACAL-3: НИКАКИХ команд прибору отсюда. usb_host_send_text_command("-sta")
+        // читает NVS (boot_config_calib_always(), #CAL-1) — флеш выключает кэш, а стек
+        // этой задачи в PSRAM: assert esp_task_stack_is_sane_cache_disabled и
+        // перезагрузка (пойман 2026-10-14 при остановленном наборе: кэш флага
+        // заполняется первым стартом после загрузки). Здесь — только снимок, анализ, экран.
+        if (s_acal_cmd_fail) why = "No spectrometer: commands not sent.";
+        TickType_t t0 = xTaskGetTickCount();
+        int last_try = -ACAL_TRY_S;
+        bool done = false;
+        s_acal_res->err = AUTOCAL_E_NODATA;
+        s_acal_res->n = 0;
+        while (!why && !done) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            if (s_acal_cancel) break;
+            int el = (int)((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS / 1000);
+            bool valid = spectrum_get_snapshot(s_acal_snap);
+            if (!usb_host_cdc_is_connected()) { why = "Spectrometer disconnected."; break; }
+            bool last = el >= ACAL_MAX_S;
+            if (valid && el >= ACAL_MIN_S && (el - last_try >= ACAL_TRY_S || last)) {
+                last_try = el;
+                int64_t t = esp_timer_get_time();
+                autocal_ra226(s_acal_snap->bins, SPECTRUM_CHANNELS, s_acal_ws, s_acal_res);
+                ESP_LOGI(TAG, "#ACAL-1: %d с: err %d, линий %d, степень %d, rms %.2f кэВ, анализ %lld мс", el,
+                         s_acal_res->err, s_acal_res->n, s_acal_res->order, s_acal_res->rms_kev,
+                         (long long)((esp_timer_get_time() - t) / 1000));
+                if (autocal_enough(s_acal_res) || (last && s_acal_res->err == AUTOCAL_OK)) { done = true; break; }
+            }
+            if (last) { why = acal_reason(s_acal_res->err); break; }
+            char buf[sizeof s_acal_msg];
+            snprintf(buf, sizeof buf, "Acquiring %d:%02d (max 5:00), %lu counts, %lu CPS.\nLines found: %d%s",
+                     el / 60, el % 60, (unsigned long)(valid ? s_acal_snap->total_counts : 0),
+                     (unsigned long)(valid ? s_acal_snap->cps : 0), s_acal_res->n,
+                     el < ACAL_MIN_S ? " (first check at 0:30)" : "");
+            lvgl_port_lock(0);
+            snprintf(s_acal_msg, sizeof s_acal_msg, "%s", buf);
+            acal_render();
+            lvgl_port_unlock();
+        }
+        lvgl_port_lock(0);
+        if (s_acal_cancel) {
+            s_acal_state = ACAL_IDLE;
+        } else if (done) {
+            s_acal_old_valid = s_acal_snap->calib_valid;
+            s_acal_old_order = s_acal_snap->calib_order;
+            memcpy(s_acal_old, s_acal_snap->calibration, sizeof s_acal_old);
+            s_acal_state = ACAL_DONE;
+        } else {
+            snprintf(s_acal_msg, sizeof s_acal_msg, "%s", why ? why : "Calibration failed.");
+            s_acal_state = ACAL_FAIL;
+        }
+        acal_render();
+        lvgl_port_unlock();
+    }
+}
+
 // #TFT-29: режим сети. Переключение — перезагрузка платы, поэтому через подтверждение.
 static void net_btn_cb(lv_event_t *e)
 {
@@ -1712,6 +1965,14 @@ static bool build_ui(void)
     s_saved    = heap_caps_malloc(sizeof(*s_saved), MALLOC_CAP_SPIRAM);
     s_mnt_mon_buf  = heap_caps_malloc((size_t)MNT_W * MNT_MON_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);   // #MNT-1
     s_mnt_spec_buf = heap_caps_malloc((size_t)MNT_W * MNT_SPEC_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
+    // #ACAL-1: снимок спектра, рабочий буфер и результат автокалибровки — PSRAM.
+    s_acal_snap = heap_caps_malloc(sizeof(*s_acal_snap), MALLOC_CAP_SPIRAM);
+    s_acal_ws   = heap_caps_malloc(2 * SPECTRUM_CHANNELS * sizeof(float), MALLOC_CAP_SPIRAM);
+    s_acal_res  = heap_caps_calloc(1, sizeof(*s_acal_res), MALLOC_CAP_SPIRAM);
+    if (!s_acal_snap || !s_acal_ws || !s_acal_res) {
+        ESP_LOGW(TAG, "#ACAL-1: нет PSRAM под автокалибровку — кнопка не работает");
+        s_acal_res = NULL;
+    }
     if (!s_snap || !s_col || !s_plot_buf || !s_mon_buf || !s_iv || !s_mon_tmp ||
         !s_m_raw || !s_m_sma || !s_m_pr || !s_m_ps ||
         !s_wf_cols || !s_wf_rmax || !s_wf_rowbuf || !s_wf_buf || !s_fent || !s_saved ||
@@ -1895,8 +2156,10 @@ static bool build_ui(void)
     mk_label(s_pane_conf, 36, 226, &lv_font_montserrat_12, COL_TICK_X, "0");
     lv_obj_t *mx = mk_label(s_pane_conf, 0, 226, &lv_font_montserrat_12, COL_TICK_X, "8191");
     lv_obj_align(mx, LV_ALIGN_TOP_RIGHT, -36, 226);
-    mk_label(s_pane_conf, 16, 250, &lv_font_montserrat_12, COL_DIM,
-             "Spectrum and waterfall on this display. Minimum width 100 channels.");
+    // #ACAL-1: автокалибровка по источнику; подпись окна каналов ужата правее кнопки.
+    mk_button(s_pane_conf, 16, 244, 170, LV_SYMBOL_SETTINGS " Calibrate Ra-226", COL_DIM, COL_TXT, LV_OPA_10,
+              acal_open_cb, 0);
+    mk_label(s_pane_conf, 200, 252, &lv_font_montserrat_12, COL_DIM, "Window: this display only, min 100 ch.");
 
     // #TFT-34: экран «Files» — поверх панелей; папки сверху, список — таблица.
     s_files = mk_rect(scr, 0, FILES_Y, TFT_H_RES, BAR_Y - 1 - FILES_Y, COL_BG);
@@ -3508,6 +3771,16 @@ static void tft_task(void *arg)
             lv_obj_add_flag(s_live_btn, LV_OBJ_FLAG_HIDDEN);
             lvgl_port_unlock();
         }
+        if (cmd == TFT_CMD_ACAL_START) {          // #ACAL-3: как Clear (-rst + сброс) и Start (-sta)
+            int r1 = usb_host_send_text_command("-rst");
+            spectrum_reset();
+            int r2 = usb_host_send_text_command("-sta");
+            if (r2 == 0) acq_hint(true);
+            ESP_LOGI(TAG, "#ACAL-1: старт калибровки Ra-226: -rst %s, -sta %s", r1 ? "НЕ отправлено" : "ok",
+                     r2 ? "НЕ отправлено" : "ok");
+            s_acal_cmd_fail = r1 || r2;
+            if (s_acal_task) xTaskNotifyGive(s_acal_task);
+        }
         if (cmd == TFT_CMD_ALARM_SAVE) {          // #ALM-1: пороги с экрана -> NVS
             int r = cps_alarm_set_config(&s_alm_pend);
             lvgl_port_lock(0);
@@ -3740,6 +4013,12 @@ void tft_display_init(void)
     }
     if (!build_ui()) return;   // build_ui() уже залогировал причину
 
+    // #ACAL-1: задача автокалибровки ждёт уведомления от кнопки Start; стек в PSRAM.
+    if (s_acal_res && xTaskCreatePinnedToCoreWithCaps(acal_task, "acal", 6144, NULL, 2, &s_acal_task, 1,
+                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
+        ESP_LOGW(TAG, "#ACAL-1: задача не создана — автокалибровка недоступна");
+        s_acal_task = NULL;
+    }
     if (xTaskCreatePinnedToCore(tft_task, "tft_disp", TFT_TASK_STACK, NULL, 3, NULL, 0) != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreate(tft_disp) failed — экран не обновляется");
         return;
