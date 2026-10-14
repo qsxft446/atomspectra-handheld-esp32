@@ -218,9 +218,15 @@ static esp_err_t render_spectrum_json(httpd_req_t *req, const spectrum_data_t *s
     if (sp->calib_valid) {
         int p = snprintf(buf, 4096, ",\"calib\":[");
         for (int i = 0; i <= sp->calib_order; i++)
-            p += snprintf(buf + p, 4096 - p, "%s%.15g", i ? "," : "", sp->calibration[i]);
+            p += snprintf(buf + p, 4096 - p, "%s%.17g", i ? "," : "", sp->calibration[i]);   // #CAL-4: без потерь
         snprintf(buf + p, 4096 - p, "]");
         httpd_resp_sendstr_chunk(req, buf);
+    }
+    {   // #CAL-4: состояние записи калибровки в прибор
+        static const char *const CD[] = { "none", "busy", "ok", "fail", "nodev" };
+        int cd = usb_host_caldev_state();
+        n = snprintf(buf, 4096, ",\"cal_dev\":\"%s\"", CD[cd >= 0 && cd <= 4 ? cd : 0]);
+        httpd_resp_send_chunk(req, buf, n);
     }
     httpd_resp_sendstr_chunk(req, "}");
     httpd_resp_send_chunk(req, NULL, 0);
@@ -1480,8 +1486,13 @@ static esp_err_t handle_set_calibration(httpd_req_t *req)
     }
     spectrum_set_calibration(coeffs, n - 1);
     cJSON_Delete(root);
+    // #CAL-2: и в прибор — иначе его следующий ответ на -cal вернёт старую калибровку.
+    // #CAL-4: в фоне (~11 с); итог — поле "cal_dev" в /api/spectrum.json.
+    int dr = usb_host_write_device_calibration_async(coeffs, n - 1);
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"ok\":true}");
+    httpd_resp_sendstr(req, dr != 0 ? "{\"ok\":true,\"device\":\"busy\"}"
+                          : usb_host_caldev_state() == CALDEV_NODEV ? "{\"ok\":true,\"device\":\"nodev\"}"
+                                                                    : "{\"ok\":true,\"device\":\"pending\"}");
     return ESP_OK;
 }
 

@@ -151,6 +151,25 @@ static const char *find_cal_dump(const char *s)
     return NULL;
 }
 
+// #CAL-3: подтверждения прибора — строки "ok" / "-ok" в текстовых пакетах. Запись
+// регистра (-cal N HHHHHHHH) прибор выполняет заметное время (видимо, пишет во
+// флеш): 11 команд с паузой 60 мс вставали в очередь, проверочный -cal оказывался
+// в её конце, и дамп не успевал за 3 с — запись считалась неудачной.
+static volatile uint32_t s_ok_acks;
+
+static void count_ok_lines(const char *s)
+{
+    for (const char *p = s; *p; ) {
+        const char *e = p;
+        while (*e && *e != '\n') e++;
+        const char *a = p, *b = e;
+        while (a < b && (*a == ' ' || *a == '-')) a++;
+        while (b > a && (b[-1] == '\r' || b[-1] == ' ')) b--;
+        if (b - a == 2 && a[0] == 'o' && a[1] == 'k') s_ok_acks++;
+        p = *e ? e + 1 : e;
+    }
+}
+
 static void handle_rx_packet(void)
 {
     // #FW-22: счётчик пакетов по типу
@@ -178,6 +197,7 @@ static void handle_rx_packet(void)
             ESP_LOGD(TAG, "Text(%u): %.80s%s", (unsigned)s_rx_packet.len,
                      (const char*)s_rx_packet.data, s_rx_packet.len>80?"...":"");
             devlog_push(s_rx_packet.data, (int)s_rx_packet.len);  // #UI-1: в веб-лог команд
+            count_ok_lines((const char *)s_rx_packet.data);         // #CAL-3
             int sp = sizeof(s_text_accum)-s_text_accum_len-1;
             int cp = (int)s_rx_packet.len < sp ? (int)s_rx_packet.len : sp;
             memcpy(s_text_accum+s_text_accum_len, s_rx_packet.data, cp);
@@ -778,6 +798,98 @@ static void calib_autoread_before_start(void)
     ESP_LOGI(TAG, "#CAL-1: калибровка с прибора перед стартом: %s",
              spectrum_cal_dump_seq() != seq0 ? "ответ получен" : "ответа нет за 2 с");
 }
+
+// #CAL-2 (2026-10-14): калибровка жила только на плате, а прибор хранил старую —
+// любой -cal (кнопка «Считать с прибора», «Инфо», программа на ПК через мост)
+// возвращал старую, и плата её применяла: «калибруется, потом возвращается».
+// Теперь применённая калибровка пишется и в прибор. Формат подтверждён дампом
+// прибора пользователя: регистры 0..9 — 5 коэффициентов double, старшее 32-битное
+// слово в чётном регистре; регистр 10 — CRC32 (стандартный) ASCII-строки регистров
+// 0..9 заглавными hex; запись — "-cal N HHHHHHHH" (ответ "ok"; проверено на
+// неиспользуемом регистре 38). После записи — дамп -cal и побитная сверка.
+int usb_host_write_device_calibration(const double *coeffs, int order)
+{
+    if (!s_cdc_dev) return -1;
+    char regs[11][9], cat[81] = "";
+    for (int c = 0; c < CALIB_COEFFS; c++) {
+        double v = c <= order ? coeffs[c] : 0.0;
+        uint64_t raw;
+        memcpy(&raw, &v, sizeof raw);
+        snprintf(regs[2 * c], sizeof regs[0], "%08lX", (unsigned long)(raw >> 32));
+        snprintf(regs[2 * c + 1], sizeof regs[0], "%08lX", (unsigned long)(raw & 0xFFFFFFFFu));
+    }
+    for (int i = 0; i < 10; i++) strncat(cat, regs[i], sizeof cat - strlen(cat) - 1);
+    uint32_t cc = 0xFFFFFFFF;   // тот же CRC32, что проверяет разбор дампа (spectrum.c)
+    for (int i = 0; cat[i]; i++) {
+        cc ^= (uint8_t)cat[i];
+        for (int j = 0; j < 8; j++) cc = (cc & 1) ? (cc >> 1) ^ 0xEDB88320 : cc >> 1;
+    }
+    snprintf(regs[10], sizeof regs[0], "%08lX", (unsigned long)(cc ^ 0xFFFFFFFF));
+    for (int i = 0; i <= 10; i++) {
+        char cmd[24];
+        snprintf(cmd, sizeof cmd, "-cal %d %.8s", i, regs[i]);
+        uint32_t ack0 = s_ok_acks;
+        if (send_text_raw(cmd) != 0) {
+            ESP_LOGW(TAG, "#CAL-2: запись регистра %d не отправлена", i);
+            return -2;
+        }
+        // #CAL-3: следующая запись — только после "ok" на эту (до 2 с).
+        int w = 0;
+        while (s_ok_acks == ack0 && w < 200) { vTaskDelay(pdMS_TO_TICKS(10)); w++; }
+        if (s_ok_acks == ack0) {
+            ESP_LOGW(TAG, "#CAL-2: нет ok на запись регистра %d", i);
+            return -3;
+        }
+        if (i == 0) ESP_LOGI(TAG, "#CAL-3: запись регистра прибора — ok через %d мс", w * 10);
+    }
+    uint32_t seq0 = spectrum_cal_dump_last(NULL);
+    if (send_text_raw("-cal") != 0) return -2;
+    double got[CALIB_COEFFS];
+    for (int i = 0; i < 30 && spectrum_cal_dump_last(got) == seq0; i++) vTaskDelay(pdMS_TO_TICKS(100));
+    if (spectrum_cal_dump_last(got) == seq0) {
+        ESP_LOGW(TAG, "#CAL-2: прибор не прислал дамп -cal после записи");
+        return -3;
+    }
+    for (int c = 0; c < CALIB_COEFFS; c++) {
+        double v = c <= order ? coeffs[c] : 0.0;
+        if (memcmp(&v, &got[c], sizeof v) != 0) {
+            ESP_LOGW(TAG, "#CAL-2: в приборе не то: коэф. %d записан %.10g, прочитан %.10g", c, v, got[c]);
+            return -4;
+        }
+    }
+    ESP_LOGI(TAG, "#CAL-2: калибровка записана в прибор и проверена (CRC %s)", regs[10]);
+    return 0;
+}
+
+// #CAL-4: фоновая запись калибровки в прибор.
+static volatile int s_caldev_state;
+static double       s_caldev_c[CALIB_COEFFS];
+static int          s_caldev_order;
+
+static void caldev_task(void *arg)
+{
+    (void)arg;
+    int r = usb_host_write_device_calibration(s_caldev_c, s_caldev_order);
+    s_caldev_state = r == 0 ? CALDEV_OK : r == -1 ? CALDEV_NODEV : CALDEV_FAIL;
+    vTaskDelete(NULL);
+}
+
+int usb_host_write_device_calibration_async(const double *coeffs, int order)
+{
+    if (s_caldev_state == CALDEV_BUSY) return -1;
+    if (!s_cdc_dev) { s_caldev_state = CALDEV_NODEV; return 0; }
+    for (int i = 0; i < CALIB_COEFFS; i++) s_caldev_c[i] = i <= order ? coeffs[i] : 0.0;
+    s_caldev_order = order;
+    s_caldev_state = CALDEV_BUSY;
+    // Стек во внутренней RAM на ~11 с (правило #ACAL-3: USB-команды — не из PSRAM-стека).
+    if (xTaskCreate(caldev_task, "caldev", 4096, NULL, 3, NULL) != pdPASS) {
+        s_caldev_state = CALDEV_FAIL;
+        return -1;
+    }
+    return 0;
+}
+
+int usb_host_caldev_state(void) { return s_caldev_state; }
 
 int usb_host_send_text_command(const char *cmd)
 {

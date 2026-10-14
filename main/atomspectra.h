@@ -198,6 +198,20 @@ void usb_host_cdc_acq_intent_device_reboot(void);  // #ACQ-1: перед пер�
 // #CAL-1: калибровка на плате задана (не нули); номер разобранного дампа -cal
 bool spectrum_calib_is_set(void);
 uint32_t spectrum_cal_dump_seq(void);
+// #CAL-2: последний принятый дамп -cal (CRC сошёлся): номер и коэффициенты.
+uint32_t spectrum_cal_dump_last(double out[CALIB_COEFFS]);
+// #CAL-2: записать калибровку В ПРИБОР (регистры 0..10 через "-cal N HHHHHHHH") и
+// проверить чтением дампа. 0 — записано и совпало; -1 — прибор не подключён;
+// -2 — команда не отправлена; -3 — нет ответа на -cal; -4 — прочитано не то.
+// Блокирует до ~3.5 с; только из задач со стеком во внутренней RAM (#ACAL-3).
+int usb_host_write_device_calibration(const double *coeffs, int order);
+// #CAL-4: то же в фоне (прибор пишет регистр ~1 с, всего ~11 с — веб и экран не
+// ждут). Своя задача со стеком во внутренней RAM. 0 — запущено, -1 — уже идёт.
+int usb_host_write_device_calibration_async(const double *coeffs, int order);
+// Состояние фоновой записи: 0 — не было, 1 — идёт, 2 — записано и проверено,
+// 3 — ошибка, 4 — прибор не подключён.
+enum { CALDEV_NONE = 0, CALDEV_BUSY, CALDEV_OK, CALDEV_FAIL, CALDEV_NODEV };
+int usb_host_caldev_state(void);
 
 void spectrum_init(void);
 void spectrum_process_histogram_chunk(const uint8_t *data, size_t len);

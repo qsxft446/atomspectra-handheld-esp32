@@ -60,6 +60,10 @@ static SemaphoreHandle_t s_spec_lock;
 static volatile bool s_calib_dirty;
 // #CAL-1: номер разобранного дампа -cal (ждёт автосчитывание перед стартом набора)
 static volatile uint32_t s_cal_dump_seq;
+// #CAL-2: последний ПРИНЯТЫЙ дамп -cal (CRC сошёлся, калибровка ненулевая) — для
+// проверки записи калибровки в прибор (usb_host_write_device_calibration).
+static volatile uint32_t s_cal_dump_ok_seq;
+static double            s_cal_dump_coef[CALIB_COEFFS];
 
 // #FW-8: staging-сборка секундного свипа гистограммы. Прибор на 600000 бод шлёт
 // ВЕСЬ спектр раз в секунду цепочкой chunk-ов: offset==0 — старт свипа, каждый
@@ -493,6 +497,8 @@ void spectrum_process_info_response(const char *text)
                 s_spectrum.calib_order = order;
                 s_spectrum.calib_valid = true;
                 s_calib_dirty = true;   // #WF-1: запись сделает main loop вне SPEC_LOCK
+                memcpy(s_cal_dump_coef, cal, sizeof(cal));   // #CAL-2
+                s_cal_dump_ok_seq++;
                 ESP_LOGI(TAG, "Calibration OK: order=%d", s_spectrum.calib_order);
             } else {
                 // #CAL-1 (апстрим 1.2.28): пустая калибровка прибора калибровку платы не затирает
@@ -909,6 +915,16 @@ bool spectrum_calib_is_set(void)
 }
 
 uint32_t spectrum_cal_dump_seq(void) { return s_cal_dump_seq; }
+
+// #CAL-2: номер последнего принятого дампа -cal и его коэффициенты (под SPEC_LOCK).
+uint32_t spectrum_cal_dump_last(double out[CALIB_COEFFS])
+{
+    SPEC_LOCK();
+    uint32_t seq = s_cal_dump_ok_seq;
+    if (out) memcpy(out, s_cal_dump_coef, sizeof(s_cal_dump_coef));
+    SPEC_UNLOCK();
+    return seq;
+}
 
 void spectrum_set_calibration(const double *coeffs, int order)
 {

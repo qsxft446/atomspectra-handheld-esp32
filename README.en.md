@@ -36,10 +36,11 @@ The screen is a mini copy of the web UI (LVGL 8):
   monitoring chart and the spectrum. Double tap on the monitoring chart starts monitoring,
   on the spectrum toggles Lin/Log; a right-to-left swipe clears the spectrum or the
   monitoring (independently).
-- **Automatic energy calibration with a Ra-226 source** (Conf → Calibrate Ra-226): place
-  the source, press Start — the unit clears the spectrum, acquires until there are enough
-  counts (up to 5 min), finds the radium lines (Pb X-rays to 1764 keV) and fits the
-  calibration; the result is shown next to the current one and applied with Apply.
+- **Automatic energy calibration** (Conf → Calibrate): Ra-226, Th-232, Na-22 or
+  Cs-137+K-40 source. Place the source, press Start — the unit clears the spectrum, acquires
+  until the worst line is within ±2.5 keV (2–5 min), finds the lines and fits the
+  calibration; Na-22 and Cs+K refine the current calibration keeping its shape. The result
+  is shown next to the current one; Apply also writes it into the spectrometer itself.
 - 5-point touch calibration (web UI "System" page).
 
 ![Board with the display](images/handheld-display.jpg)

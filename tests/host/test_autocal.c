@@ -35,11 +35,11 @@ static int load(const char *path, uint32_t *bins)
 
 static void print_result(const char *title, const autocal_result_t *r)
 {
-    printf("  %s: err %d, %d lines, order %d, rms %.2f keV, max %.2f keV, net609 %.0f, net1764 %.0f, enough %d\n",
-           title, r->err, r->n, r->order, r->rms_kev, r->max_abs_kev, r->net609, r->net_top, autocal_enough(r));
+    printf("  %s: err %d, %d lines, order %d, rms %.2f keV, max %.2f keV, worst stat %.2f keV, enough %d\n",
+           title, r->err, r->n, r->order, r->rms_kev, r->max_abs_kev, r->max_sigma_kev, autocal_enough(r));
     for (int i = 0; i < r->n; i++)
-        printf("     %-14s ch %7.1f  %7.1f keV -> %7.1f (%+.1f)\n", r->name[i], r->ch[i], r->kev[i], r->fit_kev[i],
-               r->fit_kev[i] - r->kev[i]);
+        printf("     %-14s ch %7.1f  %7.1f keV -> %7.1f (%+.1f)  stat +/-%.2f\n", r->name[i], r->ch[i], r->kev[i],
+               r->fit_kev[i], r->fit_kev[i] - r->kev[i], r->sigma_kev[i]);
 }
 
 static bool has_line(const autocal_result_t *r, double kev)
@@ -70,6 +70,54 @@ static void rescale(const uint32_t *in, uint32_t *out, double s)
             if (hi > lo) out[j] += (uint32_t)(in[i] * (hi - lo) / (b - a) + 0.5);
         }
     }
+}
+
+// #ACAL-6: синтетический спектр. Линия E -> канал по эталонной шкале прибора REF,
+// умноженный на g (дрейф усиления); FWHM 2.8*sqrt(ch) каналов; фон — две экспоненты;
+// шум Пуассона (нормальное приближение, Бокс-Мюллер на LCG).
+typedef struct { double kev, area; } synth_line_t;
+static unsigned s_seed;
+static double urand(void) { s_seed = s_seed * 1103515245u + 12345u; return ((s_seed >> 8) & 0xFFFFFF) / 16777216.0 + 1e-9; }
+static double ref_inv(double e)
+{
+    double lo = 0, hi = N - 1;
+    for (int i = 0; i < 60; i++) { double m = (lo + hi) / 2; if (autocal_eval(REF, 4, m) < e) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+}
+static void synth(uint32_t *out, const synth_line_t *L, int nl, double g, unsigned seed)
+{
+    static double lam[N];
+    s_seed = seed;
+    for (int i = 0; i < N; i++) lam[i] = 600.0 * exp(-i / 700.0) + 40.0 * exp(-i / 3000.0) + 1.0;
+    for (int k = 0; k < nl; k++) {
+        double c = ref_inv(L[k].kev) * g, s = 2.8 * sqrt(c) / 2.3548;
+        for (int i = (int)(c - 6 * s); i <= (int)(c + 6 * s); i++)
+            if (i >= 0 && i < N) lam[i] += L[k].area / (s * 2.5066) * exp(-0.5 * (i - c) * (i - c) / (s * s));
+    }
+    for (int i = 0; i < N; i++) {
+        double z = sqrt(-2 * log(urand())) * cos(6.283185307 * urand());
+        double v = lam[i] + sqrt(lam[i]) * z;
+        out[i] = v > 0 ? (uint32_t)(v + 0.5) : 0;
+    }
+}
+// Отклонение найденной калибровки от истинной шкалы (REF при усилении g) в каналах линий.
+static double max_dev_lines(const autocal_result_t *r, double g)
+{
+    double mx = 0;
+    for (int i = 0; i < r->n; i++) {
+        double d = fabs(autocal_eval(r->coeffs, r->order, r->ch[i]) - autocal_eval(REF, 4, r->ch[i] / g));
+        if (d > mx) mx = d;
+    }
+    return mx;
+}
+static double max_dev_range(const autocal_result_t *r, double g, double lo, double hi)
+{
+    double mx = 0;
+    for (double ch = lo; ch <= hi; ch += 10) {
+        double d = fabs(autocal_eval(r->coeffs, r->order, ch) - autocal_eval(REF, 4, ch / g));
+        if (d > mx) mx = d;
+    }
+    return mx;
 }
 
 int main(void)
@@ -140,6 +188,56 @@ int main(void)
     CHECK(r.err != AUTOCAL_OK);
     memset(tmp, 0, sizeof tmp);
     CHECK(autocal_ra226(tmp, N, ws, &r) == AUTOCAL_E_NODATA);
+
+    // 6. #ACAL-6: синтетические Th-232, Na-22, Cs-137+K-40 — шкала прибора пользователя
+    // (эталон REF), шум Пуассона, усиление x0.85..x1.15.
+    static const synth_line_t TH[] = { {238.63, 60000}, {338.32, 9000}, {510.77, 9000}, {583.19, 40000},
+        {727.33, 4000}, {860.56, 2500}, {911.20, 12000}, {968.97, 7000}, {1588.19, 1200}, {2614.51, 6000} };
+    static const synth_line_t NA[] = { {511.0, 80000}, {1274.54, 15000} };
+    // K-40: KCl / калийное удобрение у детектора — ~10 тыс. отсчётов за несколько минут.
+    static const synth_line_t CSK[] = { {32.9, 20000}, {661.66, 150000}, {1460.82, 10000} };
+    const double gains[] = { 0.85, 1.0, 1.15 };
+    for (size_t k = 0; k < sizeof gains / sizeof gains[0]; k++) {
+        double g = gains[k];
+        synth(tmp, TH, sizeof TH / sizeof TH[0], g, 1000 + (unsigned)k);
+        autocal_run(AUTOCAL_SRC_TH232, tmp, N, ws, NULL, 0, &r);
+        double d = r.err == AUTOCAL_OK ? max_dev_lines(&r, g) : 1e9;
+        printf("  synth Th-232 gain x%.2f: err %d, %d lines, order %d, top %d, max dev %.1f keV, enough %d\n",
+               g, r.err, r.n, r.order, r.has_top, d, autocal_enough(&r));
+        CHECK(r.err == AUTOCAL_OK && r.n >= 7 && r.has_top && r.order == 4);
+        CHECK(d <= 5.0);
+        // Na-22 и Cs+K: поправка текущей калибровки (MAP) — старая = эталон, прибор «уплыл» на g
+        synth(tmp, NA, sizeof NA / sizeof NA[0], g, 2000 + (unsigned)k);
+        autocal_run(AUTOCAL_SRC_NA22, tmp, N, ws, REF, 4, &r);
+        d = r.err == AUTOCAL_OK ? max_dev_range(&r, g, 300, ref_inv(1274.54 * 1.1) * g) : 1e9;
+        printf("  synth Na-22 gain x%.2f: err %d, %d lines, mode %d, a %.4f, max dev %.1f keV, enough %d\n",
+               g, r.err, r.n, r.mode, r.map_a, d, autocal_enough(&r));
+        CHECK(r.err == AUTOCAL_OK && r.n == 2 && r.mode == AUTOCAL_MODE_MAP && d <= 3.0);
+        synth(tmp, CSK, sizeof CSK / sizeof CSK[0], g, 3000 + (unsigned)k);
+        autocal_run(AUTOCAL_SRC_CS137_K40, tmp, N, ws, REF, 4, &r);
+        d = r.err == AUTOCAL_OK ? max_dev_range(&r, g, 300, ref_inv(1460.82 * 1.1) * g) : 1e9;
+        printf("  synth Cs+K   gain x%.2f: err %d, %d lines, mode %d, a %.4f, max dev %.1f keV, enough %d\n",
+               g, r.err, r.n, r.mode, r.map_a, d, autocal_enough(&r));
+        // K-40 слабый (3000 отсчётов): пока статистики мало — точность хуже; когда
+        // autocal_enough() — не хуже 3 кэВ.
+        CHECK(r.err == AUTOCAL_OK && r.n >= 2 && r.mode == AUTOCAL_MODE_MAP && d <= (autocal_enough(&r) ? 3.0 : 10.0));
+    }
+    // Без текущей калибровки: Na-22 — прямая, Cs+K — парабола (MAP невозможен).
+    synth(tmp, NA, sizeof NA / sizeof NA[0], 1.0, 4000);
+    CHECK(autocal_run(AUTOCAL_SRC_NA22, tmp, N, ws, NULL, 0, &r) == AUTOCAL_OK && r.order == 1);
+    synth(tmp, CSK, sizeof CSK / sizeof CSK[0], 1.0, 4001);
+    autocal_run(AUTOCAL_SRC_CS137_K40, tmp, N, ws, NULL, 0, &r);
+    printf("  synth Cs+K without old calib: err %d, %d lines, order %d\n", r.err, r.n, r.order);
+    CHECK(r.err == AUTOCAL_OK);
+
+    // 7. Чужой источник: процедура Th-232 на реальном спектре Ra-226 и наоборот.
+    autocal_run(AUTOCAL_SRC_TH232, s926, N, ws, NULL, 0, &r);
+    printf("  Th-232 procedure on real Ra-226: err %d (wrong source -> %s)\n", r.err, autocal_source_name(r.wrong_src));
+    CHECK(r.err == AUTOCAL_E_WRONGSRC && r.wrong_src == AUTOCAL_SRC_RA226);
+    synth(tmp, TH, sizeof TH / sizeof TH[0], 1.0, 5000);
+    autocal_run(AUTOCAL_SRC_RA226, tmp, N, ws, NULL, 0, &r);
+    printf("  Ra-226 procedure on synth Th-232: err %d (wrong source -> %s)\n", r.err, autocal_source_name(r.wrong_src));
+    CHECK(r.err == AUTOCAL_E_WRONGSRC && r.wrong_src == AUTOCAL_SRC_TH232);
 
     if (g_failures) { printf("AUTOCAL: %d FAILED\n", g_failures); return 1; }
     printf("AUTOCAL: ALL PASSED\n");

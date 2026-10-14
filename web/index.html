@@ -215,6 +215,7 @@ var DICT={
   "cursor.hint":"наведите курсор",
   "cal.title":"Калибровка энергии",
   "cal.unset":"Не задана","cal.set":"Задана","cal.applied":"Применена","cal.error":"Ошибка",
+  "log.calDev_ok":"Калибровка записана в прибор и проверена","log.calDev_pending":"Калибровка записывается в прибор (~10 с)...","log.calDev_busy":"Запись в прибор уже идёт — повторите через 10 с","log.calDev_nodev":"Прибор не подключён — калибровка только на плате","log.calDev_fail":"Калибровка НЕ записалась в прибор — применена только на плате",
   "cal.apply":"Применить","cal.clear":"Очистить","cal.read":"Считать с прибора",
   "saved.title":"Сохранённые спектры","saved.all":"все &rarr;",
   "saved.loading":"Загрузка...","saved.empty":"Нет сохранённых",
@@ -261,6 +262,7 @@ var DICT={
   "cursor.hint":"hover the chart",
   "cal.title":"Energy calibration",
   "cal.unset":"Not set","cal.set":"Set","cal.applied":"Applied","cal.error":"Error",
+  "log.calDev_ok":"Calibration written to the device and verified","log.calDev_pending":"Writing calibration to the device (~10 s)...","log.calDev_busy":"A device write is already running — retry in 10 s","log.calDev_nodev":"Device not connected — calibration on the board only","log.calDev_fail":"Calibration NOT written to the device — applied on the board only",
   "cal.apply":"Apply","cal.clear":"Clear","cal.read":"Read from device",
   "saved.title":"Saved spectra","saved.all":"all &rarr;",
   "saved.loading":"Loading...","saved.empty":"No saved spectra",
@@ -320,6 +322,7 @@ var logEl=document.getElementById("log");
 var overlayBins=null,overlayIdx=-1;
 var isLog=false,isCps=true,isKev=true;  /* #UI-34: дефолты тумблеров — Lin / CPS / keV (#TFT-24: Lin по умолчанию, как на экране платы) */
 var calib=null,lastD=null,calibEditing=false;
+var calDevWatch=false;   // #CAL-4: ждём итог записи калибровки в прибор (поле cal_dev)
 var devSeq=0;  /* #UI-1: курсор seq последнего показанного ответа прибора (/api/devlog) */
 var failStreak=0;  /* #UI-2: подряд-неудачи fetch спектра; гасим экран только после >=3 (одиночный 503 при конкуренции — не гасит) */
 var PL=65,PT=15,PW=1120,PH=340,PR=PL+PW,PB=PT+PH;
@@ -364,6 +367,7 @@ async function update(){
   var d=await r.json();
   failStreak=0;  /* #UI-2: успешный кадр — сброс счётчика подряд-неудач */
   if(d.calib){calib=d.calib;if(!calibEditing)fillCalibFields(d.calib);nucBtnEnable(true);} else if(!calib){nucBtnEnable(false);}
+  if(calDevWatch&&d.cal_dev&&d.cal_dev!=="busy"){calDevWatch=false;lg(tr("log.calDev_"+d.cal_dev));}   /* #CAL-4 */
   if(d.serial)document.getElementById("device-chip").title="S/N: "+d.serial;   // #DEV-1: текст чипа теперь статус подключения, серийник — в title
   lastD=d;
   setDeadBanner(!!d.dead);  /* #FW-43 */
@@ -507,7 +511,7 @@ async function applyCalib(){
  var coeffs=[e,d,c,b,a];
  try{
   var r=await post("/api/calibration",{headers:{"Content-Type":"application/json"},body:JSON.stringify({coeffs:coeffs})});
-  if(r.ok){calibEditing=false;calib=coeffs;var s=document.getElementById("calib-status");s.textContent=tr("cal.applied");s.style.color="var(--accent)";lg(tfmt("log.cal",coeffs.join(", ")));nucBtnEnable(true);if(lastD)draw(lastD)}
+  if(r.ok){calibEditing=false;calib=coeffs;var s=document.getElementById("calib-status");s.textContent=tr("cal.applied");s.style.color="var(--accent)";lg(tfmt("log.cal",coeffs.join(", ")));if(r.device)lg(tr("log.calDev_"+r.device));calDevWatch=r.device==="pending";nucBtnEnable(true);if(lastD)draw(lastD)}
   else{var s2=document.getElementById("calib-status");s2.textContent=tr("cal.error");s2.style.color="#ff8a82"}
  }catch(err){lg(tfmt("log.calErr",err))}
 }
