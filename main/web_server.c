@@ -415,21 +415,39 @@ static esp_err_t handle_reset(httpd_req_t *req)
     return ESP_OK;
 }
 
+// #MON-8: POST /api/monitor/save (CSRF) — сессия мониторинга из кольца платы в CSV на SD.
+// Ответ: {"ok":true,"name":"...csv","rows":N} | {"ok":false,"err":"nosd|empty|io|busy|changed"}.
+static esp_err_t handle_monitor_save(httpd_req_t *req)
+{
+    if (!csrf_check(req)) return ESP_FAIL;
+    char name[128] = "", out[220];
+    int rows = 0, rc = sd_log_mon_save(name, sizeof name, &rows);
+    static const char *const ERR[] = { "", "nosd", "empty", "io", "busy", "changed" };
+    if (rc == SDLOG_SAVE_OK)
+        snprintf(out, sizeof out, "{\"ok\":true,\"name\":\"%s\",\"rows\":%d}", name, rows);   // имя — [A-Za-z0-9_.-]
+    else
+        snprintf(out, sizeof out, "{\"ok\":false,\"err\":\"%s\"}", (rc < 0 && rc >= -5) ? ERR[-rc] : "io");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, out);
+    return ESP_OK;
+}
+
 // #FW-2/#FW-3: GET текущих настроек «Поведение при старте платы» (NVS).
 static esp_err_t handle_boot_config_get(httpd_req_t *req)
 {
     boot_config_t bc;
     boot_config_load(&bc);
-    char resp[256];
+    char resp[288];
     // #FW-42: name_prefix санитизирован в NVS ([A-Za-z0-9_-]) → JSON-escape не нужен.
     snprintf(resp, sizeof(resp),
         "{\"autostart_spectrum\":%s,\"autostart_waterfall\":%s,"
-        "\"clear_spectrum\":%s,\"clear_waterfall\":%s,\"calib_always\":%s,\"name_prefix\":\"%s\"}",
+        "\"clear_spectrum\":%s,\"clear_waterfall\":%s,\"calib_always\":%s,\"mon_autosave\":%s,\"name_prefix\":\"%s\"}",
         bc.autostart_spectrum  ? "true" : "false",
         bc.autostart_waterfall ? "true" : "false",
         bc.clear_spectrum      ? "true" : "false",
         bc.clear_waterfall     ? "true" : "false",
         bc.calib_always        ? "true" : "false",   // #CAL-1
+        bc.mon_autosave        ? "true" : "false",   // #MON-8
         bc.name_prefix);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, resp);
@@ -518,6 +536,7 @@ static esp_err_t handle_boot_config_set(httpd_req_t *req)
     if ((it = cJSON_GetObjectItem(root, "clear_spectrum")))      bc.clear_spectrum      = cJSON_IsTrue(it);
     if ((it = cJSON_GetObjectItem(root, "clear_waterfall")))     bc.clear_waterfall     = cJSON_IsTrue(it);
     if ((it = cJSON_GetObjectItem(root, "calib_always")))        bc.calib_always        = cJSON_IsTrue(it);   // #CAL-1
+    if ((it = cJSON_GetObjectItem(root, "mon_autosave")))        bc.mon_autosave        = cJSON_IsTrue(it);   // #MON-8
     // #FW-42: префикс имён экспортов. boot_config_save() санитизирует ([A-Za-z0-9_-], усечение).
     if ((it = cJSON_GetObjectItem(root, "name_prefix")) && cJSON_IsString(it)) {
         strncpy(bc.name_prefix, it->valuestring, sizeof(bc.name_prefix) - 1);
@@ -2006,7 +2025,7 @@ void web_server_init(void)
     // tskNO_AFFINITY позволял httpd (prio 5) исполняться на core 0 рядом с
     // USB-приёмом — уводим целиком.
     config.core_id = 1;
-    config.max_uri_handlers = 84;        // #ALM-1: +2 /api/alarm (было 80).        // #FS-1: 47 своих + 20 водопада + 5 /api/fs/* = 72 — ровно в старый предел, +8 запас. #WF-2/#MON-1/#FIELD-4: 41 базовых (uris[]: было 33 + 8 FIELD: /api/time,/api/ap-pass,6 captive-проб) + 20 waterfall (web_waterfall_register: 19 reg + /ws/waterfall) = 61. Лимит 45 когда-то переполнялся → тихие 404 у последних хэндлеров → цикл reconnect. 72 = +11 запас.
+    config.max_uri_handlers = 86;        // #MON-8: +1 /api/monitor/save. #ALM-1: +2 /api/alarm (было 80).        // #FS-1: 47 своих + 20 водопада + 5 /api/fs/* = 72 — ровно в старый предел, +8 запас. #WF-2/#MON-1/#FIELD-4: 41 базовых (uris[]: было 33 + 8 FIELD: /api/time,/api/ap-pass,6 captive-проб) + 20 waterfall (web_waterfall_register: 19 reg + /ws/waterfall) = 61. Лимит 45 когда-то переполнялся → тихие 404 у последних хэндлеров → цикл reconnect. 72 = +11 запас.
     config.stack_size = 8192;
     config.max_open_sockets = 11;        // из 16 LWIP-сокетов; запас для tcp_bridge + sntp
     config.lru_purge_enable = true;      // при исчерпании пула закрыть LRU-соединение, не отказывать (errno 23)
@@ -2034,6 +2053,7 @@ void web_server_init(void)
         {"/api/devlog",                  HTTP_GET,  handle_devlog,           NULL},
         {"/api/monitor/series",          HTTP_GET,  handle_monitor_series,   NULL},  // #MON-1
         {"/api/monitor/session",         HTTP_POST, handle_monitor_session,  NULL},  // #MON-2
+        {"/api/monitor/save",            HTTP_POST, handle_monitor_save,     NULL},  // #MON-8
         {"/api/reset",                   HTTP_POST, handle_reset,            NULL},
         {"/api/boot-config",             HTTP_GET,  handle_boot_config_get,  NULL},
         {"/api/boot-config",             HTTP_POST, handle_boot_config_set,  NULL},

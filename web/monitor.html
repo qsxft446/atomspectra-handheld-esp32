@@ -81,8 +81,15 @@ canvas{ width:100%; height:auto; display:block; }
 <button class="btn green" id="startBtn" onclick="toggleRun()" data-i18n="ctl.start">Старт</button>
 <button class="btn" id="clearBtn" onclick="clearData()" data-i18n="ctl.clear">Очистить</button>
 <button class="btn" id="csvBtn" onclick="exportCsv()" data-i18n="ctl.csv">Выгрузить CSV</button>
+<button class="btn" id="saveBtn" onclick="saveSd()" data-i18n="ctl.save">Сохранить на SD</button>
 <span class="mut" id="run-stat" style="font-size:11.5px"></span>
 </div>
+<!-- #MON-8: сессия копится в кольце платы (6 ч); на карту — кнопкой или с автосохранением -->
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:#8a9686">
+ <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="monAuto" onchange="setMonAuto(this.checked)"> <span data-i18n="ctl.auto">Автосохранение сессии на SD-карту</span></label>
+ <span id="save-st" style="font-size:12px"></span>
+</div>
+<div class="mut" style="font-size:11px;margin-top:4px" data-i18n="ctl.autoHint">Без автосохранения сессия хранится только в памяти платы (последние 6 ч) — на карту её пишет кнопка «Сохранить на SD». Автосохранение включается со следующего «Старта».</div>
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:#8a9686">
  <span>Префикс файлов:</span>
  <input type="text" id="fx-prefix" maxlength="23" spellcheck="false" autocomplete="off" placeholder="MY1" title="Добавляется в начало имени всех выгрузок этой платы. Латиница, цифры, _ и -." style="width:110px;background:#11150f;color:#cfd6cd;border:1px solid #444;padding:4px 7px;border-radius:4px;font-family:inherit;font-size:12px">
@@ -157,7 +164,7 @@ var DICT={
   "page.title":"AtomSpectra · Мониторинг","device":"Прибор",
   "nav.spectrum":"Спектр","nav.waterfall":"Водопад","nav.monitor":"Мониторинг","nav.saved":"Файлы","nav.system":"Система","nav.service":"Сервис",
   "dev.chipOk":"Спектрометр подключен","dev.chipOff":"Спектрометр отключен",
-  "ctl.interval":"Интервал усреднения, с","ctl.start":"Старт","ctl.stop":"Стоп","ctl.clear":"Очистить","ctl.csv":"Выгрузить CSV",
+  "ctl.interval":"Интервал усреднения, с","ctl.start":"Старт","ctl.stop":"Стоп","ctl.clear":"Очистить","ctl.csv":"Выгрузить CSV","ctl.save":"Сохранить на SD","ctl.auto":"Автосохранение сессии на SD-карту","ctl.autoHint":"Без автосохранения сессия хранится только в памяти платы (последние 6 ч) — на карту её пишет кнопка «Сохранить на SD». Автосохранение включается со следующего «Старта».","save.busy":"сохраняю…","save.ok":"сохранено: %1 (%2 интервалов) — «Файлы» → Мониторинг","save.nosd":"нет SD-карты","save.empty":"нет закрытых интервалов — сохранять нечего","save.io":"ошибка записи на карту","save.busy2":"уже сохраняется","save.changed":"сессия сменилась во время сохранения","save.err":"не сохранено",
   "run.idle":"остановлено","run.rec":"идёт запись · собрано %1","run.sd":" · пишется на SD-карту платы","run.wait":"ожидание набора прибором…","run.paused":"прибор не набирает (время не идёт)","run.cleared":"спектр очищен на приборе — якорь сброшен",
   "live.title":"Текущий CPS","live.hint":"мгновенное значение с прибора","live.total":"Всего импульсов","live.devtime":"Время набора, с",
   "avg.title":"Средний CPS (сессия)","avg.rel":"отн. погрешность","avg.samples":"Отсчётов","avg.counts":"Импульсов в сессии","avg.dur":"Длит. сессии, с",
@@ -173,7 +180,7 @@ var DICT={
   "page.title":"AtomSpectra · Monitoring","device":"Device",
   "nav.spectrum":"Spectrum","nav.waterfall":"Waterfall","nav.monitor":"Monitoring","nav.saved":"Files","nav.system":"System","nav.service":"Service",
   "dev.chipOk":"Spectrometer connected","dev.chipOff":"Spectrometer disconnected",
-  "ctl.interval":"Averaging interval, s","ctl.start":"Start","ctl.stop":"Stop","ctl.clear":"Clear","ctl.csv":"Export CSV",
+  "ctl.interval":"Averaging interval, s","ctl.start":"Start","ctl.stop":"Stop","ctl.clear":"Clear","ctl.csv":"Export CSV","ctl.save":"Save to SD","ctl.auto":"Auto-save session to SD card","ctl.autoHint":"Without auto-save the session is kept only in board memory (last 6 h) — the Save to SD button writes it to the card. Auto-save takes effect from the next Start.","save.busy":"saving…","save.ok":"saved: %1 (%2 intervals) — Files → Monitoring","save.nosd":"no SD card","save.empty":"no closed intervals — nothing to save","save.io":"SD write error","save.busy2":"already saving","save.changed":"session changed while saving","save.err":"not saved",
   "run.idle":"stopped","run.rec":"recording · %1 collected","run.sd":" · logging to board SD card","run.wait":"waiting for device acquisition…","run.paused":"device not acquiring (time frozen)","run.cleared":"spectrum cleared on device — anchor reset",
   "live.title":"Current CPS","live.hint":"instantaneous value from device","live.total":"Total counts","live.devtime":"Acquisition time, s",
   "avg.title":"Mean CPS (session)","avg.rel":"relative error","avg.samples":"Samples","avg.counts":"Counts in session","avg.dur":"Session duration, s",
@@ -625,7 +632,20 @@ function exportCsv(){
 }
 
 var fxPrefix="";
-async function loadPrefix(){try{var r=await(await fetch("/api/boot-config")).json();fxPrefix=r.name_prefix||"";var e=document.getElementById("fx-prefix");if(e)e.value=fxPrefix;}catch(_){}}
+async function loadPrefix(){try{var r=await(await fetch("/api/boot-config")).json();fxPrefix=r.name_prefix||"";var e=document.getElementById("fx-prefix");if(e)e.value=fxPrefix;var a=document.getElementById("monAuto");if(a)a.checked=!!r.mon_autosave;}catch(_){}}
+/* #MON-8: опция автосохранения (boot-config mon_autosave) и сохранение сессии с платы на SD */
+async function setMonAuto(on){var st=document.getElementById("save-st");try{var c=await(await fetch("/api/csrf-token")).json();var r=await fetch("/api/boot-config",{method:"POST",headers:{"X-CSRF-Token":c.token||"","Content-Type":"application/json"},body:JSON.stringify({mon_autosave:!!on})});st.textContent=r.ok?"✓":"✗";}catch(_){st.textContent="✗";}loadPrefix();}
+async function saveSd(){
+ var st=document.getElementById("save-st"), b=document.getElementById("saveBtn");
+ st.style.color=""; st.textContent=t("save.busy"); b.disabled=true;
+ try{
+  var c=await(await fetch("/api/csrf-token")).json();
+  var r=await(await fetch("/api/monitor/save",{method:"POST",headers:{"X-CSRF-Token":c.token||""}})).json();
+  if(r.ok){ st.style.color="var(--accent)"; st.textContent=tfmt("save.ok",r.name,r.rows); }
+  else { st.style.color="#e24b4a"; st.textContent=t({nosd:"save.nosd",empty:"save.empty",io:"save.io",busy:"save.busy2",changed:"save.changed"}[r.err]||"save.err"); }
+ }catch(_){ st.style.color="#e24b4a"; st.textContent=t("save.err"); }
+ b.disabled=false;
+}
 async function savePrefix(){var e=document.getElementById("fx-prefix"),st=document.getElementById("fx-prefix-st");if(!e)return;st.textContent="…";try{var c=await(await fetch("/api/csrf-token")).json();var r=await fetch("/api/boot-config",{method:"POST",headers:{"X-CSRF-Token":c.token||"","Content-Type":"application/json"},body:JSON.stringify({name_prefix:e.value})});if(r.ok)await loadPrefix();st.textContent=r.ok?"✓":"✗";}catch(_){st.textContent="✗";}}
 
 (function(){

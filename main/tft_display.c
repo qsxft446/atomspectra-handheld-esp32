@@ -1241,9 +1241,9 @@ static void more_cb(lv_event_t *e)
     (void)e;
     bool to_acts = lv_obj_has_flag(s_acts, LV_OBJ_FLAG_HIDDEN);
     if (to_acts) {
-        // Save — только для спектра; на Monitor Clear чистит сессию мониторинга,
-        // на Waterfall — водопад (#TFT-28).
-        if (s_view != 0) lv_obj_add_flag(s_act_save, LV_OBJ_FLAG_HIDDEN);
+        // Save — спектр и сессия мониторинга (#MON-8); на Monitor Clear чистит сессию
+        // мониторинга, на Waterfall — водопад (#TFT-28), Save там нет.
+        if (s_view == 2) lv_obj_add_flag(s_act_save, LV_OBJ_FLAG_HIDDEN);
         else             lv_obj_clear_flag(s_act_save, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_tabs, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(s_acts, LV_OBJ_FLAG_HIDDEN);
@@ -1965,7 +1965,7 @@ static uint8_t    *s_kf_mask, *s_kf_new;     // KF_W*KF_H, PSRAM
 static void       *s_kf_ws;                  // рабочая память kerfur_face, PSRAM
 static int         s_kf_expr = -1;
 static uint32_t    s_kf_col, s_kf_bg;
-static uint32_t    s_kf_next_blink, s_kf_blink_until, s_kf_next_bliss, s_kf_bliss_until, s_kf_flash_t, s_kf_cps_t;
+static uint32_t    s_kf_next_blink, s_kf_blink_until, s_kf_next_bliss, s_kf_bliss_until, s_kf_grumpy_until, s_kf_flash_t, s_kf_cps_t;
 static bool        s_kf_flash;
 
 typedef struct { uint32_t t; int n; } ttap_t;
@@ -2025,10 +2025,11 @@ static void kf_timer_cb(lv_timer_t *t)   // задача LVGL
     }
     bool blink = (int32_t)(now - s_kf_blink_until) < 0;
     bool bliss = lv == 0 && (int32_t)(now - s_kf_bliss_until) < 0;
+    bool grumpy = lv == 0 && (int32_t)(now - s_kf_grumpy_until) < 0;   // #KF-2: ткнули — злится
     int expr;
     uint32_t col, bg = 0x000000;
     switch (lv) {
-    case 0:  expr = bliss ? KF_BLISS : blink ? KF_BLINK : KF_NORMAL; col = 0x3FA9F5; break;
+    case 0:  expr = grumpy ? KF_GRUMPY : bliss ? KF_BLISS : blink ? KF_BLINK : KF_NORMAL; col = 0x3FA9F5; break;
     case 1:  expr = blink ? KF_BLINK : KF_HMM;   col = 0xFAC775; break;
     case 2:  expr = blink ? KF_BLINK : KF_WOW;   col = 0xEF9F27; break;
     case 3:  expr = blink ? KF_BLINK : KF_ANGRY; col = 0xE24B4A; break;
@@ -2059,6 +2060,7 @@ static void kf_set(bool on)   // задача LVGL
         s_kf_next_blink = now + 2000;
         s_kf_bliss_until = now + 2000;   // встречает «блаженством»
         s_kf_next_bliss = now + 9000;
+        s_kf_grumpy_until = now;
         s_kf_cps_t = 0;
         lv_obj_clear_flag(s_kf, LV_OBJ_FLAG_HIDDEN);
         kf_timer_cb(NULL);
@@ -2076,13 +2078,17 @@ static void kf_enter_cb(lv_event_t *e)   // тройной тап по числ�
     if (triple_tap(&tt)) kf_set(true);
 }
 
-static void kf_tap_cb(lv_event_t *e)     // по мордочке: тройной — выход, одиночный — погладить
+static void kf_tap_cb(lv_event_t *e)     // по мордочке: тройной — выход, одиночный — злится (#KF-2)
 {
     (void)e;
     static ttap_t tt;
     if (triple_tap(&tt)) { kf_set(false); return; }
     uint32_t now = lv_tick_get();
-    if (cps_alarm_level() == 0) s_kf_bliss_until = now + 2000;
+    if (cps_alarm_level() == 0) {
+        s_kf_grumpy_until = now + 2000;
+        s_kf_bliss_until = now;   // блаженство не досматриваем
+        if ((int32_t)(s_kf_next_bliss - (now + 2000)) < 0) s_kf_next_bliss = now + 6000;
+    }
 }
 
 static bool s_kf_shown(void) { return s_kf && !lv_obj_has_flag(s_kf, LV_OBJ_FLAG_HIDDEN); }
@@ -3910,6 +3916,18 @@ static void action_cmd(uint8_t cmd)
         ESP_LOGI(TAG, "кнопка Clear: -rst -> %s", r == 0 ? "отправлено" : "НЕ отправлено");
         if (r == 0) snprintf(msg, sizeof msg, "Spectrum cleared");
         else { snprintf(msg, sizeof msg, "Cleared on board, spectrometer not connected"); col = COL_WARN; }
+    } else if (s_view == 1) {
+        // #MON-8: сессия мониторинга из кольца платы — CSV на карту (как «Сохранить» веба)
+        char name[96];
+        int rows = 0, rc = sd_log_mon_save(name, sizeof name, &rows);
+        if (rc == SDLOG_SAVE_OK) snprintf(msg, sizeof msg, "Saved %d intervals to SD", rows);
+        else {
+            snprintf(msg, sizeof msg, "Not saved: %s",
+                     rc == SDLOG_SAVE_NOSD ? "no SD card" : rc == SDLOG_SAVE_EMPTY ? "no intervals yet"
+                     : rc == SDLOG_SAVE_BUSY ? "already saving" : rc == SDLOG_SAVE_CHANGED ? "session changed"
+                     : "SD write error");
+            col = COL_RED_TXT;
+        }
     } else {
         int idx = spectrum_save_to_flash();   // запись во флеш — здесь, не в задаче LVGL
         ESP_LOGI(TAG, "кнопка Save: %d", idx);

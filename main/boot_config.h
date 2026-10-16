@@ -16,6 +16,7 @@ typedef struct {
     bool clear_spectrum;        // при старте очистить накопленный спектр (ESP spectrum_reset + -rst прибору)
     bool clear_waterfall;       // при старте очистить водопад (spectrogram_clear)
     bool calib_always;          // #CAL-1: перед стартом набора всегда читать калибровку с прибора
+    bool mon_autosave;          // #MON-8: сессию мониторинга сразу писать на SD (иначе — кнопка Save)
     // #FW-42: префикс имени во всех экспортах (spectrum/waterfall/backup), чтобы не
     // путались файлы от разных детекторов (пример: "MY1"→"MY1spectrum.csv"). Пустая
     // строка = историческое поведение (без префикса). Санитизируется до [A-Za-z0-9_-].
@@ -42,4 +43,6 @@ int  boot_config_save(const boot_config_t *in);
 int16_t boot_config_tz_min(void);
 // #CAL-1: «всегда читать калибровку с прибора при старте набора» (кэш, NVS boot/calib_al)
 bool    boot_config_calib_always(void);
+// #MON-8: «автосохранение мониторинга на SD» (кэш, NVS boot/mon_auto)
+bool    boot_config_mon_autosave(void);
 void    boot_config_set_tz_min(int16_t m);   // вне диапазона — игнор

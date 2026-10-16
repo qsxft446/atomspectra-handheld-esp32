@@ -22,3 +22,14 @@ bool sd_log_mon_active(void);                                         // фай�
 // #FS-1: имя (без каталога) открытого сейчас файла мониторинга; false — не открыт.
 // Браузер файлов не даёт его удалить (FATFS_FS_LOCK=0 — FatFs сам не защищает).
 bool sd_log_mon_file(char *out, size_t cap);
+
+// #MON-8 (запрос 2026-10-17): сессия мониторинга копится только в кольце платы (6 ч,
+// monitor.c), на карту сама пишется лишь с опцией «автосохранение» (boot_config
+// mon_autosave; без неё sd_log_mon_new_session() файл не заводит). Кнопка Save (веб,
+// экран) — эта функция: вся сессия из кольца (те же интервалы, что строит веб) одним
+// новым CSV в /sdcard/monitor, формат как у автосохранения. Блокирующая (6 ч по 1 с —
+// ~1.7 МБ, секунды) — звать из задачи с внутренним стеком (httpd, tft_task).
+// 0 — сохранено: name — имя файла, *rows — число интервалов.
+enum { SDLOG_SAVE_OK = 0, SDLOG_SAVE_NOSD = -1, SDLOG_SAVE_EMPTY = -2, SDLOG_SAVE_IO = -3,
+       SDLOG_SAVE_BUSY = -4, SDLOG_SAVE_CHANGED = -5 };
+int sd_log_mon_save(char *name, size_t cap, int *rows);

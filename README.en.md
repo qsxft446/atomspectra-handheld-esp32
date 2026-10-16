@@ -26,9 +26,13 @@ The screen is a mini copy of the web UI (LVGL 8):
   calibration; header with CPS, acquisition time, total, CPU load, device status (the dot
   blinks red while acquiring) and battery level.
 - **Monitor** — CPS per interval and moving average (session shared with the web UI).
+  Monitoring starts together with spectrum acquisition; the session is kept in board
+  memory (last 6 h) and goes to the card with Save (screen and web) or auto-save.
 - **Waterfall** — spectrogram in the Inferno palette.
 - **Conf** — Indoor / Outdoor network mode, **WiFi setup from the screen** (network scan,
   password on an on-screen keyboard, checked before saving), channel window.
+  Without the home network the board no longer reboots into Outdoor — it retries every
+  30 s; Outdoor is switched on manually.
 - **Start / Stop** (one button that follows the state), Clear, Save, **Files** — browse
   the card and open saved spectra on the plot.
 - **"On the tube" view** — for a unit clamped to the spectrometer tube: a long press in
@@ -66,7 +70,7 @@ The screen is a mini copy of the web UI (LVGL 8):
   Thresholds are set on the "System" page or on the device (Conf → Alarm).
 
 - **microSD** (display module slot): saved spectra, waterfall segments, monitoring
-  sessions (CSV), autosave of the live spectrum. No user data goes to internal flash —
+  sessions (CSV, via Save or auto-save), autosave of the live spectrum. No user data goes to internal flash —
   flash writes disturbed USB data reception.
 - **"Files"** web page: view (spectrum plot, monitoring CSV, waterfall image), download,
   delete one or many.

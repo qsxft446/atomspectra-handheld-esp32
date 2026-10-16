@@ -38,6 +38,7 @@ static const char *TAG = "monitor";
 #define MON_RING_PSRAM     21600   // 6 ч при 1 Гц: 21600 × 14 Б ≈ 295 КБ PSRAM
 #define MON_RING_INTERNAL   3600   // fallback без PSRAM: 1 ч ≈ 49 КБ internal
 #define MON_SANE_EPOCH  1700000000 // 2023-11-14: раньше — часы платы не выставлены
+#define ACQ_IDLE_US     5000000LL  // #MON-9: время прибора стоит дольше — набор остановлен (свип раз в 1 с)
 
 static monitor_sample_t *s_ring;
 static uint32_t s_cap;       // фактическая ёмкость кольца (см. monitor_init)
@@ -190,6 +191,13 @@ static void monitor_task(void *arg)
     uint32_t prev_counts = 0, prev_time = 0;
     uint32_t t_off = 0;   // #MON-7: end_sec ряда = наборное время + t_off (непрерывно через сбросы)
     bool prev_valid = false;
+    // #MON-9 (запрос 2026-10-17): мониторинг стартует сам вместе с набором спектра. «Набор
+    // начался» = время прибора пошло после паузы > ACQ_IDLE_US (или впервые после старта
+    // платы) — так ловится старт откуда угодно: веб, экран, программа на ПК, кнопка прибора,
+    // автостарт. Идущую сессию не трогаем; остановленную Старт заменяет новой, как кнопка.
+    // Стоп набора мониторинг не останавливает: сессия ждёт и продолжится со следующим свипом.
+    bool acq_on = false;
+    int64_t last_adv_us = 0;
     for (;;) {
         // Будимся коммитом свипа (паттерн wf_task); 1500 мс — fallback-тик при
         // молчащем приборе (тогда totals не растут и сэмпл не эмитится).
@@ -198,6 +206,8 @@ static void monitor_task(void *arg)
 
         uint32_t counts = 0, tsec = 0;
         spectrum_get_totals(&counts, &tsec);
+        int64_t now_us = esp_timer_get_time();
+        if (acq_on && now_us - last_adv_us > ACQ_IDLE_US) acq_on = false;   // набор встал
 
         if (!prev_valid) {
             // Первый замер (в т.ч. restored-autosave) — только опорная точка:
@@ -225,6 +235,16 @@ static void monitor_task(void *arg)
             prev_counts = counts; prev_time = tsec;
             continue;
         }
+        if (!acq_on) {   // #MON-9: набор пошёл — сессия с этого сэмпла (start_seq = его seq)
+            monitor_session_t ss;
+            monitor_session_get(&ss);
+            if (!ss.running) {
+                ESP_LOGI(TAG, "acquisition started -> monitoring session auto-start");
+                monitor_session_start(0);   // интервал — прежний
+            }
+            acq_on = true;
+        }
+        last_adv_us = now_us;
         ring_push(tsec + t_off, counts - prev_counts, (uint16_t)dur);
         prev_counts = counts; prev_time = tsec;
     }

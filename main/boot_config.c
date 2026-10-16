@@ -5,6 +5,7 @@
 
 static const char *TAG = "bootcfg";
 static int8_t s_calib_al = -1;   // #CAL-1: -1 — ещё не читали из NVS
+static int8_t s_mon_auto = -1;   // #MON-8: то же
 #define BOOT_NS "boot"
 
 static bool get_flag(nvs_handle_t h, const char *key)
@@ -39,6 +40,7 @@ void boot_config_load(boot_config_t *out)
     out->clear_spectrum      = false;
     out->clear_waterfall     = false;
     out->calib_always        = false;
+    out->mon_autosave        = false;
     out->name_prefix[0]      = '\0';
 
     nvs_handle_t h;
@@ -48,6 +50,7 @@ void boot_config_load(boot_config_t *out)
     out->clear_spectrum      = get_flag(h, "clr_spec");
     out->clear_waterfall     = get_flag(h, "clr_wf");
     out->calib_always        = get_flag(h, "calib_al");   // #CAL-1
+    out->mon_autosave        = get_flag(h, "mon_auto");   // #MON-8
     size_t plen = sizeof(out->name_prefix);
     if (nvs_get_str(h, "nprefix", out->name_prefix, &plen) != ESP_OK) {
         out->name_prefix[0] = '\0';                             // ключа нет → без префикса
@@ -68,12 +71,25 @@ int boot_config_save(const boot_config_t *in)
     e |= nvs_set_u8(h, "clr_spec", in->clear_spectrum      ? 1 : 0);
     e |= nvs_set_u8(h, "clr_wf",   in->clear_waterfall     ? 1 : 0);
     e |= nvs_set_u8(h, "calib_al", in->calib_always        ? 1 : 0);   // #CAL-1
+    e |= nvs_set_u8(h, "mon_auto", in->mon_autosave        ? 1 : 0);   // #MON-8
     e |= nvs_set_str(h, "nprefix", clean);
     if (e == ESP_OK) e = nvs_commit(h);
     nvs_close(h);
     if (e != ESP_OK) { ESP_LOGW(TAG, "save failed (0x%x)", (int)e); return -1; }
     s_calib_al = in->calib_always ? 1 : 0;   // #CAL-1: кэш
+    s_mon_auto = in->mon_autosave ? 1 : 0;   // #MON-8: кэш
     return 0;
+}
+
+// #MON-8: кэш флага — читает sd_log при смене сессии (tft_task).
+bool boot_config_mon_autosave(void)
+{
+    if (s_mon_auto < 0) {
+        boot_config_t bc;
+        boot_config_load(&bc);
+        s_mon_auto = bc.mon_autosave ? 1 : 0;
+    }
+    return s_mon_auto == 1;
 }
 
 // #CAL-1: кэш флага — читается перед каждым стартом набора (usb_host_cdc).

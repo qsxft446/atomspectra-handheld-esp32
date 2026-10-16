@@ -10,7 +10,7 @@
 
 #define MAXSH 48
 
-typedef enum { SH_RING, SH_SEG, SH_ELL, SH_TRI, SH_DISK } shape_kind_t;
+typedef enum { SH_RING, SH_SEG, SH_ELL, SH_TRI, SH_DISK, SH_HOLE } shape_kind_t;
 typedef struct {
     shape_kind_t k;
     float a, b, c, d, e, f, t;   // смысл — по виду фигуры
@@ -29,6 +29,8 @@ static void seg(face_t *F, float x0, float y0, float x1, float y1, float t) { ad
 // закрашенный эллипс
 static void ell(face_t *F, float x, float y, float rx, float ry) { add(F, SH_ELL, x, y, rx, ry, 0, 0, 0); }
 static void disk(face_t *F, float x, float y, float r) { add(F, SH_DISK, x, y, r, 0, 0, 0, 0); }
+// #KF-2: «дырка» — квадрат с полустороной h, гасит точки поверх всех фигур (зрачки)
+static void hole(face_t *F, float x, float y, float h) { add(F, SH_HOLE, x, y, h, 0, 0, 0, 0); }
 // закрашенный треугольник
 static void tri(face_t *F, float x0, float y0, float x1, float y1, float x2, float y2)
 {
@@ -115,6 +117,15 @@ static void build(int expr, face_t *F)
         seg(F, 255, 22, 255, 50, 10); disk(F, 255, 64, 6);
         whiskers(F, 186);
         break;
+    case KF_GRUMPY:  // #KF-2 по снимку из игры и правке пользователя: глаза залиты целиком, зрачок —
+                     // чёрная точка 2x2 клетки; брови к носу; маленький нос; рот прямой чертой; усы
+        disk(F, 165, 150, 54); disk(F, 315, 150, 54);
+        hole(F, 165, 150, 5); hole(F, 315, 150, 5);   // 2x2 клетки: центры 162.5/167.5 (и 312.5/317.5)
+        seg(F, 108, 54, 198, 78, 14); seg(F, 372, 54, 282, 78, 14);
+        tri(F, 230, 200, 250, 200, 240, 210);
+        seg(F, 205, 230, 275, 230, 11);
+        whiskers(F, 192);
+        break;
     default: break;
     }
 }
@@ -141,6 +152,7 @@ static int inside(const shape_t *s, float x, float y)
     case SH_SEG:  return dist_seg(x, y, s) <= s->t / 2;
     case SH_ELL:  { float u = (x - s->a) / s->c, v = (y - s->b) / s->d; return u * u + v * v <= 1; }
     case SH_DISK: return hypotf(x - s->a, y - s->b) <= s->c;
+    case SH_HOLE: return fabsf(x - s->a) <= s->c && fabsf(y - s->b) <= s->c;
     case SH_TRI: {
         float d1 = sgn(x, y, s->a, s->b, s->c, s->d), d2 = sgn(x, y, s->c, s->d, s->e, s->f),
               d3 = sgn(x, y, s->e, s->f, s->a, s->b);
@@ -162,7 +174,8 @@ void kerfur_face_render(int expr, uint8_t *mask, void *ws)
         for (int gx = 0; gx < KF_W; gx++) {
             float x = gx * KF_CELL + KF_CELL / 2.0f, y = gy * KF_CELL + KF_CELL / 2.0f;
             uint8_t on = 0;
-            for (int i = 0; i < F.n && !on; i++) on = (uint8_t)inside(&F.s[i], x, y);
+            for (int i = 0; i < F.n && !on; i++) on = F.s[i].k != SH_HOLE && inside(&F.s[i], x, y);
+            for (int i = 0; i < F.n && on; i++) if (F.s[i].k == SH_HOLE && inside(&F.s[i], x, y)) on = 0;
             mask[gy * KF_W + gx] = on;
         }
 #undef F

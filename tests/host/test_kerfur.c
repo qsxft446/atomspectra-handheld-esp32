@@ -8,7 +8,7 @@
 int g_failures;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); g_failures++; } } while (0)
 
-static const char *NAMES[KF_COUNT] = { "NORMAL", "BLINK", "BLISS", "HMM (1)", "WOW (2)", "ANGRY (3)", "PANIC (4)" };
+static const char *NAMES[KF_COUNT] = { "NORMAL", "BLINK", "BLISS", "HMM (1)", "WOW (2)", "ANGRY (3)", "PANIC (4)", "GRUMPY" };
 
 int main(int argc, char **argv)
 {

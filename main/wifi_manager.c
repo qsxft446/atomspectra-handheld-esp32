@@ -2,7 +2,7 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "esp_timer.h"       // #FIELD-2: fallback-таймер STA→AP
+#include "esp_timer.h"       // #WIFI-2: таймер повторов подключения
 #include "nvs_flash.h"
 #include "esp_http_server.h"
 #include "mdns.h"
@@ -26,8 +26,11 @@ static volatile uint8_t s_try_reason = 0;
 static int s_retry_count = 0;
 #define MAX_RETRY 10
 
-// #FIELD-2a: STA не получила IP за FALLBACK_SEC → ребут в полевой AP.
-#define FALLBACK_SEC 90
+// #WIFI-2 (запрос 2026-10-17, «перезапуск напрягает»): автоперехода в полевой AP больше нет
+// (был #FIELD-2a: нет IP за 90 с или 10 отказов -> перезагрузка в AP). Indoor ищет домашнюю
+// сеть сам: MAX_RETRY попыток подряд, дальше одна попытка раз в RETRY_SEC. Outdoor — только
+// вручную (экран Conf / веб «Система»), там у платы есть экран, и в поле его хватает.
+#define RETRY_SEC 30
 
 // #FIELD-1: текущий сетевой режим. Дефолт STA, устанавливается в развилке init.
 static net_run_mode_t s_mode = NET_MODE_STA;
@@ -40,7 +43,7 @@ static char s_ap_pass[WIFI_PASS_MAX] = AP_PASS_DEFAULT;
 static bool s_ap_pass_default = true;   // #SEC-2: пароль AP не менялся
 static bool s_ap_forced = false;        // #FIELD-6: field_ap липкий (ap_mode=1) vs fallback
 
-static esp_timer_handle_t s_fallback_timer = NULL;
+static esp_timer_handle_t s_retry_timer = NULL;   // #WIFI-2: редкие попытки после MAX_RETRY
 
 
 /* ---- DNS captive portal ---- */
@@ -327,25 +330,12 @@ static void start_field_ap(void)
     start_mdns();
 }
 
-/* ---- STA fallback → полевой AP (FIELD-2a, способ A4: ребут+одноразовый флаг) ---- */
+/* ---- #WIFI-2: повтор подключения к домашней сети раз в RETRY_SEC ---- */
 
-static void set_fb_flag_and_reboot(void)
-{
-    nvs_handle_t nvs;
-    if (nvs_open("wifi", NVS_READWRITE, &nvs) == ESP_OK) {
-        nvs_set_u8(nvs, "ap_fb_once", 1);
-        nvs_commit(nvs);
-        nvs_close(nvs);
-    }
-    ESP_LOGW(TAG, "FIELD-2a: STA no IP -> reboot into field AP");
-    esp_restart();
-}
-
-static void fallback_timer_cb(void *arg)
+static void retry_timer_cb(void *arg)
 {
     (void)arg;
-    if (!wifi_is_connected())
-        set_fb_flag_and_reboot();
+    if (!s_trying && !wifi_is_connected()) esp_wifi_connect();   // отказ снова заведёт таймер
 }
 
 /* ---- STA mode ---- */
@@ -366,17 +356,19 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
             esp_wifi_connect();
             s_retry_count++;
             ESP_LOGW(TAG, "Reconnecting (%d/%d)...", s_retry_count, MAX_RETRY);
-        } else {
-            // #FIELD-2a: не тупик, как раньше, а полевой AP (либо раньше 90с-таймера)
-            ESP_LOGE(TAG, "WiFi failed after %d retries -> field AP", MAX_RETRY);
-            set_fb_flag_and_reboot();
+        } else if (s_retry_timer && !esp_timer_is_active(s_retry_timer)) {
+            // #WIFI-2: без перезагрузки — следующая попытка через RETRY_SEC
+            if (s_retry_count == MAX_RETRY) {
+                ESP_LOGW(TAG, "WiFi: home network not found, retry every %d s", RETRY_SEC);
+                s_retry_count++;   // сообщение — один раз за серию
+            }
+            esp_timer_start_once(s_retry_timer, (uint64_t)RETRY_SEC * 1000000);
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "Connected, IP: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_count = 0;
-        // #FIELD-2a: STA поднялась — отменить fallback-таймер
-        if (s_fallback_timer) esp_timer_stop(s_fallback_timer);
+        if (s_retry_timer) esp_timer_stop(s_retry_timer);
         xEventGroupSetBits(s_wifi_events, WIFI_CONNECTED_BIT);
     }
 }
@@ -408,7 +400,8 @@ void wifi_manager_init(void)
     }
 
     // #FIELD-2a: одноразовый fallback после неудачной STA — войти в поле, сбросить флаг.
-    // Не липкий: следующий ребут снова пробует STA (FIELD-3).
+    // Не липкий: следующий ребут снова пробует STA (FIELD-3). С #WIFI-2 флаг не ставится —
+    // ветка осталась для флага, записанного прежней прошивкой.
     if (ap_fb_once) {
         if (nvs_open("wifi", NVS_READWRITE, &nvs) == ESP_OK) {
             nvs_erase_key(nvs, "ap_fb_once");
@@ -446,7 +439,7 @@ void wifi_manager_init(void)
         return;
     }
 
-    // #FIELD-1: Indoor (STA) + fallback-таймер 90с (FIELD-2a).
+    // #FIELD-1: Indoor (STA); #WIFI-2 — без ухода в AP, повторы раз в RETRY_SEC.
     esp_event_handler_instance_t inst_any, inst_got_ip;
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
         &wifi_event_handler, NULL, &inst_any);
@@ -461,16 +454,13 @@ void wifi_manager_init(void)
     start_mdns();
     s_mode = NET_MODE_STA;
 
-    // fallback-таймер: нет IP за 90с → ребут в полевой AP
     const esp_timer_create_args_t targs = {
-        .callback = fallback_timer_cb,
-        .name = "wifi_fb",
+        .callback = retry_timer_cb,
+        .name = "wifi_retry",
     };
-    if (esp_timer_create(&targs, &s_fallback_timer) == ESP_OK)
-        esp_timer_start_once(s_fallback_timer, (uint64_t)FALLBACK_SEC * 1000000);
+    esp_timer_create(&targs, &s_retry_timer);   // заводит обработчик отключений
 
-    ESP_LOGI(TAG, "WiFi STA starting, SSID=%s (fallback %ds)",
-             wifi_config.sta.ssid, FALLBACK_SEC);
+    ESP_LOGI(TAG, "WiFi STA starting, SSID=%s", wifi_config.sta.ssid);
 
 }
 
@@ -601,12 +591,13 @@ int wifi_manager_try_sta(const char *ssid, const char *pass, int timeout_ms)
         return WIFI_TRY_BAD_ARG;
     if (s_mode != NET_MODE_STA) {
         // Точка доступа: STA-интерфейса и обработчиков нет — сохранить, Indoor, перезагрузка.
-        // Не та сеть/пароль — через 90 с плата сама вернётся в точку доступа (#FIELD-2a).
+        // Не та сеть/пароль — плата останется в Indoor и будет искать сеть (#WIFI-2);
+        // обратно в точку доступа — Conf -> Outdoor.
         return save_sta(ssid, pass) == ESP_OK ? WIFI_TRY_SAVED_REBOOT : WIFI_TRY_FAILED;
     }
     wifi_config_t old = {0};
     esp_wifi_get_config(WIFI_IF_STA, &old);
-    if (s_fallback_timer) esp_timer_stop(s_fallback_timer);
+    if (s_retry_timer) esp_timer_stop(s_retry_timer);
 
     s_trying = true;
     esp_wifi_disconnect();
@@ -648,8 +639,7 @@ int wifi_manager_try_sta(const char *ssid, const char *pass, int timeout_ms)
     s_trying = false;
     s_retry_count = 0;
     esp_wifi_set_config(WIFI_IF_STA, &old);
-    esp_wifi_connect();
-    if (s_fallback_timer) esp_timer_start_once(s_fallback_timer, (uint64_t)FALLBACK_SEC * 1000000);
+    esp_wifi_connect();   // отказы прежней сети — штатные повторы (#WIFI-2)
     switch (reason) {
     case WIFI_REASON_AUTH_FAIL:
     case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
