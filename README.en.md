@@ -29,7 +29,13 @@ The screen is a mini copy of the web UI (LVGL 8):
   Monitoring starts together with spectrum acquisition; the session is kept in board
   memory (last 6 h) and goes to the card with Save (screen and web) or auto-save.
 - **Waterfall** — spectrogram in the Inferno palette.
-- **Conf** — Indoor / Outdoor network mode, **WiFi setup from the screen** (network scan,
+- **Nuclide identification during acquisition** — coloured lines above the peaks of found
+  nuclides on the spectrum plot and a list in the same colours in the top-right corner (K-40
+  in grey); the same in the web UI. Library of 30 sources (natural U/Th series, K-40, Cs-137,
+  Co-60, Am-241, Ba-133, Na-22, Eu-152, I-131 and more), nuclide-to-spectrum method (LSRM)
+  aware of NaI artefacts. The board tunes itself to the AtomSpectra model in use: resolution
+  and scale drift (count rate, temperature) are estimated from the spectrum itself.
+- **Conf** (button in the "•••" row) — Indoor / Outdoor network mode, **WiFi setup from the screen** (network scan,
   password on an on-screen keyboard, checked before saving), channel window.
   Without the home network the board no longer reboots into Outdoor — it retries every
   30 s; Outdoor is switched on manually.
@@ -40,7 +46,7 @@ The screen is a mini copy of the web UI (LVGL 8):
   monitoring chart and the spectrum. Double tap on the monitoring chart starts monitoring,
   on the spectrum toggles Lin/Log; a right-to-left swipe clears the spectrum or the
   monitoring (independently).
-- **Automatic energy calibration** (Conf → Calibrate): Ra-226, Th-232, Na-22 or
+- **Automatic energy calibration** (**Cal** button, long press): Ra-226, Th-232, Na-22 or
   Cs-137+K-40 source. Place the source, press Start — the unit clears the spectrum, acquires
   until the worst line is within ±2.5 keV (2–5 min), finds the lines and fits the
   calibration; Na-22 and Cs+K refine the current calibration keeping its shape. The result
@@ -67,7 +73,10 @@ The screen is a mini copy of the web UI (LVGL 8):
 
 - **CPS threshold alarm** — 4 thresholds, buzzer on GPIO21: one, two, three beeps with a
   1 s pause, or fast beeping at level 4; the CPS value on the screen flashes red.
-  Thresholds are set on the "System" page or on the device (Conf → Alarm).
+  Thresholds are set on the "System" page or on the device (Conf → Alarm). **Threshold 1
+  from background**: Cal button, short press — one minute of acquisition, threshold =
+  background + 4σ (≈ one false alarm per 2–3 hours). The CPS chart shows threshold lines in
+  different colours (the next one appears as the chart approaches it).
 
 - **microSD** (display module slot): saved spectra, waterfall segments, monitoring
   sessions (CSV, via Save or auto-save), autosave of the live spectrum. No user data goes to internal flash —
@@ -133,7 +142,9 @@ network in the portal, or set WiFi up right on the screen (Conf → WiFi).
 ## License
 
 MIT — see [LICENSE](LICENSE). Original project © 2026 VibeEngineering LLC; changes in
-this fork © 2026 atomspectra-handheld-esp32 contributors.
+this fork © 2026 atomspectra-handheld-esp32 contributors. The nuclide line table and test
+spectra come from [spectravibe-toolkit](https://github.com/VibeEngineering-LLC/spectravibe-toolkit)
+(MIT, © 2026 SpectraVibe; [tests/host/data/svk](tests/host/data/svk/README.md)).
 
 This device is not a certified measuring instrument — see the original disclaimer in
 [docs/upstream](docs/upstream/README.en.md).

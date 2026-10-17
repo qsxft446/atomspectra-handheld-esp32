@@ -335,6 +335,13 @@ function sessIv(){ return (sess&&sess.iv>=1)?sess.iv:intervalSec(); }
 // отдельно — см. updateStatusChips() (авторитетный r.usb_connected из
 // /api/system, а не догадка по наличию total). Сбор серии идёт отдельно
 // (syncSeries) — троттлинг фоновой вкладки этому не вредит. ---
+var cpsSeq=-1,cpsBusy=false;
+async function cpsPoll(){
+ if(cpsBusy||document.hidden)return; cpsBusy=true;
+ try{var r=await(await fetch("/api/cps",{cache:"no-store"})).json();
+  if(r.valid&&r.seq!==cpsSeq){cpsSeq=r.seq;document.getElementById("live-cps").textContent=fmtCps(r.cps);}
+ }catch(e){} finally{cpsBusy=false;}
+}
 async function livePoll(){
  var r;
  try{ r=await(await fetch("/api/spectrum.json",{cache:"no-store"})).json(); }
@@ -662,6 +669,7 @@ async function savePrefix(){var e=document.getElementById("fx-prefix"),st=docume
  livePoll(); syncSeries();
  setInterval(syncSeries,1000);
  setInterval(livePoll,2000);
+ setInterval(cpsPoll,500);   /* #CPS-1: плитка «Текущий CPS» — лёгким /api/cps раз в 0.5 с */
  window.addEventListener("resize",drawChart);
  setInterval(updateStatusChips,3000);
  updateStatusChips();

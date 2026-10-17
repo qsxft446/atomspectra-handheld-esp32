@@ -330,6 +330,17 @@ var csrfToken="";
 var doseK=0;
 
 async function loadCsrf(){try{var r=await(await fetch("/api/csrf-token")).json();csrfToken=r.token||""}catch(e){}}
+/* #CPS-1: CPS прибора по приходу STAT — крупно, в строке статуса и доза */
+var cpsSeq=-1,cpsBusy=false;
+async function cpsPoll(){
+ if(cpsBusy||document.hidden)return; cpsBusy=true;
+ try{var r=await(await fetch("/api/cps",{cache:"no-store"})).json();
+  if(r.valid&&r.seq!==cpsSeq){cpsSeq=r.seq;
+   document.getElementById("big-cps").textContent=r.cps;
+   var s=document.getElementById("st-cps"); if(s)s.textContent=r.cps;
+   if(doseK>0)document.getElementById("big-dose").textContent=(r.cps*doseK).toFixed(3);}
+ }catch(e){} finally{cpsBusy=false;}
+}
 async function loadDoseK(){try{var r=await(await fetch("/api/waterfall/dose_k")).json();doseK=(typeof r.dose_k==="number"&&r.dose_k>0)?r.dose_k:0;}catch(e){}}
 function post(url,opts){opts=opts||{};opts.method="POST";opts.headers=Object.assign({},opts.headers||{},{"X-CSRF-Token":csrfToken});return fetch(url,opts)}
 async function loadPrefix(){try{var r=await(await fetch("/api/boot-config")).json();var e=document.getElementById("fx-prefix");if(e)e.value=r.name_prefix||"";}catch(_){}}
@@ -378,7 +389,7 @@ async function update(){
   if(d.t2>0)tStr+='/'+d.t2;
   if(d.t3>0)tStr+='/'+d.t3;
   var doseStr=(doseK>0)?(d.cps*doseK).toFixed(3):"";
-  stEl.innerHTML='<span class="ac">CPS <span>'+d.cps+'</span></span><span class="sep">|</span>'+
+  stEl.innerHTML='<span class="ac">CPS <span id="st-cps">'+d.cps+'</span></span><span class="sep">|</span>'+
    '<span class="w"><span>'+d.total.toLocaleString(lcl())+'</span> <span class="mut">'+tr("ax.cnt").toLowerCase()+'</span></span>'+
    (doseStr?'<span class="sep">|</span><span><span class="mut">'+tr("st.dose")+'</span> <span class="ac">'+doseStr+'</span> <span class="mut">µSv/h</span></span>':'')+'<span class="sep">|</span>'+
    '<span><span class="mut">'+tr("st.real")+'</span> '+fmtTime(d.time)+'</span><span class="sep">|</span>'+
@@ -445,6 +456,9 @@ function draw(d){
  if(yO){X.strokeStyle="#6ea8ff";X.lineWidth=1.1;X.setLineDash([5,4]);X.beginPath();for(var i=0;i<yO.length;i++){var px=PL+i*bw+bw/2,py=yMap(yO[i]);i===0?X.moveTo(px,py):X.lineTo(px,py)}X.stroke();X.setLineDash([])}
  X.restore();
  drawNuclides(N);
+ if(isoLastTotal>d.total)isoRes=null;   /* #ISO-2: спектр очищен — найденное сразу снять */
+ isoLastTotal=d.total;
+ drawIsotopes(N,yV,yMap);   /* #ISO-1 */
  X.strokeStyle="#283024";X.lineWidth=1;X.strokeRect(PL+.5,PT+.5,PW,PH);
  X.fillStyle="#5a645a";X.font="11px ui-monospace,monospace";X.textAlign="right";
  for(var i=0;i<yTicks.length;i++){var y=yMap(yTicks[i]);if(y>=PT&&y<=PB)X.fillText(fmtY(yTicks[i]),PL-6,y+4)}
@@ -452,6 +466,35 @@ function draw(d){
  for(var i=0;i<xTicks.length;i++){X.strokeStyle="#283024";X.beginPath();X.moveTo(xTicks[i].x,PB);X.lineTo(xTicks[i].x,PB+5);X.stroke();X.fillStyle="#6b756a";X.fillText(xTicks[i].l,xTicks[i].x,PB+16)}
  X.fillStyle="#4a534a";X.fillText(isKev&&calib?tr("ax.kev"):tr("ax.ch"),PL+PW/2,PB+32);
  X.save();X.translate(12,PT+PH/2);X.rotate(-Math.PI/2);X.textAlign="center";X.fillText(isCps?tr("ax.cps"):tr("ax.cnt"),0,0);X.restore();
+}
+
+/* #ISO-1: найденные платой нуклиды (/api/isotopes, раз в 5 с) — цветные линии над их пиками и
+   список тех же цветов в правом верхнем углу; природные — серым (цвета общие с экраном). */
+var isoRes=null,isoLastTotal=0;
+async function isoPoll(){
+ if(document.hidden)return;
+ try{isoRes=await(await fetch("/api/isotopes",{cache:"no-store"})).json();if(lastD)draw(lastD);}catch(e){}
+}
+function drawIsotopes(N,yV,yMap){
+ if(!isoRes||!isoRes.found||!isoRes.found.length)return;
+ var nch=isoRes.nch||N,bw=PW/N;
+ X.save();X.beginPath();X.rect(PL,PT,PW,PH);X.clip();X.lineWidth=2;
+ isoRes.found.forEach(function(f){
+  X.strokeStyle=f.col;
+  f.ch.forEach(function(c){
+   var i=Math.round(c*N/nch);if(i<0||i>=N)return;
+   var top=PB;for(var k=Math.max(0,i-3);k<=Math.min(N-1,i+3);k++){var y=yMap(yV[k]);if(y<top)top=y;}
+   var x=PL+(i+0.5)*bw,y1=Math.max(PT+8,top-6);
+   X.beginPath();X.moveTo(x,PT+2);X.lineTo(x,y1);X.stroke();
+  });
+ });
+ X.restore();
+ X.font="bold 13px ui-monospace,monospace";X.textAlign="right";
+ isoRes.found.forEach(function(f,j){
+  var y=PT+18+j*17,w=X.measureText(f.name).width;
+  X.fillStyle="rgba(12,15,11,.75)";X.fillRect(PR-12-w,y-13,w+8,17);
+  X.fillStyle=f.col;X.fillText(f.name,PR-8,y);
+ });
 }
 
 function drawCursor(){
@@ -712,6 +755,8 @@ function drawNuclides(N){
  await loadDoseK();
  loadPrefix();
  populateNucPanel();
+ setInterval(isoPoll,5000); isoPoll();   /* #ISO-1: найденные нуклиды */
+ setInterval(cpsPoll,500);   /* #CPS-1: число CPS — лёгким /api/cps раз в 0.5 с, не ждёт спектра */
  setInterval(update,2000);   /* #UI-15: 1000→2000ms — chunked /api/spectrum.json ел сокеты при F5; макс. uri_handlers=11 */
  setInterval(loadFlashInfo,10000);
  loadFlashInfo();   // #FIELD-6: сразу показать режим Indoor/Outdoor в шапке

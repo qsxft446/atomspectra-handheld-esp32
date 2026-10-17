@@ -241,6 +241,10 @@ bool spectrum_get_snapshot(spectrum_data_t *out);
 void spectrum_get_totals(uint32_t *counts, uint32_t *time_sec);
 // #ALM-1: CPS последнего свипа и время набора под тем же локом; true — спектр есть.
 bool spectrum_get_cps(uint32_t *cps, uint32_t *time_sec);
+// #CPS-1: метка прихода последнего STAT (мкс esp_timer, 0 — не было) и замер его опережения
+// коммита свипа (мин/сред/макс, мс; n — число замеров).
+int64_t spectrum_cps_stamp_us(void);
+void spectrum_get_stat_lead(uint32_t *min_ms, uint32_t *avg_ms, uint32_t *max_ms, uint32_t *n);
 const device_info_t   *spectrum_get_device_info(void);
 int  spectrum_save_to_flash(void);  // >=0 idx; -1 нет валидного спектра; -2 мало места; -3 ошибка FS (#FW-24); -4 нет SD-карты (#SD-5)
 int  spectrum_load_from_flash(int index, spectrum_data_t *out);

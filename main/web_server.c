@@ -37,6 +37,7 @@
 #include "esp_timer.h"
 #include "esp_littlefs.h"
 #include "cps_alarm.h"         // #ALM-1
+#include "iso_live.h"          // #ISO-1
 #include "esp_random.h"
 #include <dirent.h>
 
@@ -199,12 +200,14 @@ static esp_err_t render_spectrum_json(httpd_req_t *req, const spectrum_data_t *s
     uint32_t hist_ok = 0, hist_drop = 0;
     spectrum_get_hist_stats(&hist_ok, &hist_drop);
     int dead = usb_host_cdc_spectrometer_dead() ? 1 : 0;   // #FW-43: «определился, но не запитан»
+    uint32_t live_cps = sp->cps;
+    spectrum_get_cps(&live_cps, NULL);   // #CPS-1: то же число, что /api/cps и экран
     int n = snprintf(buf, 4096,
         "],\"total\":%" PRIu32 ",\"cpu\":%u,\"cps\":%" PRIu32 ",\"lost\":%" PRIu32 ",\"time\":%" PRIu32 ",\"live\":%.1f,"
         "\"bridge_drop\":%" PRIu32 ",\"usb_rx_err\":%" PRIu32 ",\"rx_ring_drops\":%" PRIu32 ","
         "\"hist_ok\":%" PRIu32 ",\"hist_drop\":%" PRIu32 ","
         "\"t1\":%.1f,\"t2\":%.1f,\"t3\":%.1f,\"serial\":\"%s\",\"dead\":%d",
-        sp->total_counts, sp->cpu_load, sp->cps, sp->lost_impulses,
+        sp->total_counts, sp->cpu_load, live_cps, sp->lost_impulses,
         sp->total_time_sec, compute_live_time(sp),
         tcp_bridge_dropped_bytes(), usb_host_cdc_rx_errors(), usb_host_cdc_rx_ring_drops(),
         hist_ok, hist_drop,
@@ -428,6 +431,59 @@ static esp_err_t handle_monitor_save(httpd_req_t *req)
     else
         snprintf(out, sizeof out, "{\"ok\":false,\"err\":\"%s\"}", (rc < 0 && rc >= -5) ? ERR[-rc] : "io");
     httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, out);
+    return ESP_OK;
+}
+
+// #ISO-1: GET /api/isotopes — найденные нуклиды (как на экране): техногенные первыми, природные
+// следом; col — цвет (общий с экраном), ch — каналы прибора (из nch) центров их пиков.
+static esp_err_t handle_isotopes(httpd_req_t *req)
+{
+    isoid_result_t *r = heap_caps_malloc(sizeof *r, MALLOC_CAP_SPIRAM);
+    char *out = heap_caps_malloc(3072, MALLOC_CAP_SPIRAM);
+    if (!r || !out) {
+        free(r); free(out);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no mem");
+        return ESP_FAIL;
+    }
+    uint32_t seq = iso_live_get(r);
+    int pos = snprintf(out, 3072, "{\"seq\":%lu,\"ms\":%lu,\"nch\":%d,\"found\":[", (unsigned long)seq,
+                       (unsigned long)iso_live_last_ms(), SPECTRUM_CHANNELS);
+    int k = 0;
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < r->n && pos < 2800; i++) {
+            const isoid_found_t *f = &r->f[i];
+            if ((pass == 0) == f->natural) continue;
+            pos += snprintf(out + pos, 3072 - pos, "%s{\"name\":\"%s\",\"nat\":%s,\"col\":\"#%06lX\",\"conf\":%.2f,"
+                            "\"sig\":%.1f,\"ch\":[", k++ ? "," : "", isoid_name(f->src), f->natural ? "true" : "false",
+                            (unsigned long)iso_live_color(r, i), (double)f->conf, (double)f->sig);
+            for (int m = 0; m < f->n_mark; m++)
+                pos += snprintf(out + pos, 3072 - pos, "%s%.1f", m ? "," : "", (double)f->mark_ch[m]);
+            pos += snprintf(out + pos, 3072 - pos, "],\"kev\":[");
+            for (int m = 0; m < f->n_mark; m++)
+                pos += snprintf(out + pos, 3072 - pos, "%s%.1f", m ? "," : "", (double)f->mark_kev[m]);
+            pos += snprintf(out + pos, 3072 - pos, "]}");
+        }
+    snprintf(out + pos, 3072 - pos, "]}");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr(req, out);
+    free(r);
+    free(out);
+    return ESP_OK;
+}
+
+// #CPS-1: GET /api/cps — лёгкий опрос числа CPS прибора (раз в 0.5 с со страниц) вместо
+// /api/spectrum.json (~18 КБ, раз в 2 с). seq — метка STAT, по ней видно новое значение.
+static esp_err_t handle_cps(httpd_req_t *req)
+{
+    uint32_t cps = 0, t = 0;
+    bool v = spectrum_get_cps(&cps, &t);
+    char out[96];
+    snprintf(out, sizeof out, "{\"valid\":%s,\"cps\":%" PRIu32 ",\"time\":%" PRIu32 ",\"seq\":%lld}",
+             v ? "true" : "false", cps, t, (long long)(spectrum_cps_stamp_us() / 1000));
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_sendstr(req, out);
     return ESP_OK;
 }
@@ -1454,6 +1510,14 @@ static esp_err_t handle_usb_diag(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "base_time",   bt);
         cJSON_AddNumberToObject(root, "base_folds",  bf);
     }
+    {   // #CPS-1: насколько STAT прибора приходит раньше коммита свипа (= выигрыш числа CPS)
+        uint32_t mn = 0, av = 0, mx = 0, n = 0;
+        spectrum_get_stat_lead(&mn, &av, &mx, &n);
+        cJSON_AddNumberToObject(root, "stat_lead_min_ms", mn);
+        cJSON_AddNumberToObject(root, "stat_lead_avg_ms", av);
+        cJSON_AddNumberToObject(root, "stat_lead_max_ms", mx);
+        cJSON_AddNumberToObject(root, "stat_lead_n",      n);
+    }
     char *json = cJSON_PrintUnformatted(root);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json);
@@ -2025,7 +2089,7 @@ void web_server_init(void)
     // tskNO_AFFINITY позволял httpd (prio 5) исполняться на core 0 рядом с
     // USB-приёмом — уводим целиком.
     config.core_id = 1;
-    config.max_uri_handlers = 86;        // #MON-8: +1 /api/monitor/save. #ALM-1: +2 /api/alarm (было 80).        // #FS-1: 47 своих + 20 водопада + 5 /api/fs/* = 72 — ровно в старый предел, +8 запас. #WF-2/#MON-1/#FIELD-4: 41 базовых (uris[]: было 33 + 8 FIELD: /api/time,/api/ap-pass,6 captive-проб) + 20 waterfall (web_waterfall_register: 19 reg + /ws/waterfall) = 61. Лимит 45 когда-то переполнялся → тихие 404 у последних хэндлеров → цикл reconnect. 72 = +11 запас.
+    config.max_uri_handlers = 90;        // #ISO-1: +1 /api/isotopes. #CPS-1: +1 /api/cps. #MON-8: +1 /api/monitor/save. #ALM-1: +2 /api/alarm (было 80).        // #FS-1: 47 своих + 20 водопада + 5 /api/fs/* = 72 — ровно в старый предел, +8 запас. #WF-2/#MON-1/#FIELD-4: 41 базовых (uris[]: было 33 + 8 FIELD: /api/time,/api/ap-pass,6 captive-проб) + 20 waterfall (web_waterfall_register: 19 reg + /ws/waterfall) = 61. Лимит 45 когда-то переполнялся → тихие 404 у последних хэндлеров → цикл reconnect. 72 = +11 запас.
     config.stack_size = 8192;
     config.max_open_sockets = 11;        // из 16 LWIP-сокетов; запас для tcp_bridge + sntp
     config.lru_purge_enable = true;      // при исчерпании пула закрыть LRU-соединение, не отказывать (errno 23)
@@ -2054,6 +2118,8 @@ void web_server_init(void)
         {"/api/monitor/series",          HTTP_GET,  handle_monitor_series,   NULL},  // #MON-1
         {"/api/monitor/session",         HTTP_POST, handle_monitor_session,  NULL},  // #MON-2
         {"/api/monitor/save",            HTTP_POST, handle_monitor_save,     NULL},  // #MON-8
+        {"/api/cps",                     HTTP_GET,  handle_cps,              NULL},  // #CPS-1
+        {"/api/isotopes",                HTTP_GET,  handle_isotopes,         NULL},  // #ISO-1
         {"/api/reset",                   HTTP_POST, handle_reset,            NULL},
         {"/api/boot-config",             HTTP_GET,  handle_boot_config_get,  NULL},
         {"/api/boot-config",             HTTP_POST, handle_boot_config_set,  NULL},

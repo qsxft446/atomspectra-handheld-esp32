@@ -17,6 +17,7 @@
 #include "cps_alarm.h"   // #ALM-1
 #include "autocal.h"     // #ACAL-1
 #include "kerfur_face.h"  // #KF-1
+#include "iso_live.h"     // #ISO-1: найденные нуклиды на графике спектра
 #include "esp_random.h"
 #include "tft_display.h"
 #include "board_i2c.h"
@@ -302,6 +303,10 @@ static volatile int s_files_dir, s_files_sel;   // от обработчиков
 static lv_obj_t *s_files, *s_files_tbl, *s_files_dirbtn[3];
 static spectrum_data_t *s_saved;             // открытый сохранённый спектр, PSRAM
 static bool     s_saved_on;                  // график показывает s_saved, а не живой спектр
+// #ISO-1 (запрос 2026-10-17): найденные нуклиды — цветные линии над их пиками и список тех же
+// цветов в правом верхнем углу графика (природные — серым). Только живой спектр.
+static lv_obj_t       *s_iso_lbl[ISOID_MAX_FOUND];
+static isoid_result_t *s_iso_r;          // копия результата, PSRAM
 static bool     s_force_plot;                // перерисовать график в этом проходе (только tft_task)
 static lv_obj_t *s_saved_lbl, *s_live_btn;
 static uint8_t   s_confirm_cmd;
@@ -319,6 +324,7 @@ static lv_obj_t *s_raw_lbl;   // #MON-6: «CPS Ns» — интервал сес�
 static lv_obj_t *s_mylab[N_MYLAB], *s_mxlab[N_MXLAB];
 // #MNT-1: вид «на трубе» — отдельный непрозрачный слой поверх всего экрана.
 static volatile bool s_mount;       // пишет tft_task (и init), читают тач и отрисовка
+static void cps_fast_cb(lv_timer_t *tm);   // #CPS-1
 static lv_indev_t   *s_indev;
 static lv_color_t   *s_mnt_mon_buf, *s_mnt_spec_buf;   // PSRAM
 static lv_obj_t *s_mnt, *s_mnt_cps, *s_mnt_unit, *s_mnt_dose, *s_mnt_dot, *s_mnt_batt;
@@ -349,7 +355,8 @@ enum { TFT_CMD_START = 1, TFT_CMD_STOP, TFT_CMD_VIEW, TFT_CMD_CAL, TFT_CMD_CAL_D
        TFT_CMD_MNT_MON_CLEAR,
        TFT_CMD_ALARM_SAVE,
        TFT_CMD_ACAL_START,
-       TFT_CMD_ACAL_APPLY };   // #CAL-2: применить на плате и записать в прибор (tft_task)   // #ACAL-3: -rst/-sta автокалибровки шлёт tft_task   // #ALM-1: пороги с экрана -> NVS (tft_task)   // #MNT-5: свайп по графику мониторинга — очистка сессии   // #TFT-41   // #TFT-34   // #TFT-29: после подтверждения / отпускания ползунка   // #TFT-27: CLEAR — уже после подтверждения
+       TFT_CMD_ACAL_APPLY,
+       TFT_CMD_ALC_START, TFT_CMD_ALC_DONE };   // #ALC-1: калибровка порога 1 сигнализации по фону   // #CAL-2: применить на плате и записать в прибор (tft_task)   // #ACAL-3: -rst/-sta автокалибровки шлёт tft_task   // #ALM-1: пороги с экрана -> NVS (tft_task)   // #MNT-5: свайп по графику мониторинга — очистка сессии   // #TFT-41   // #TFT-34   // #TFT-29: после подтверждения / отпускания ползунка   // #TFT-27: CLEAR — уже после подтверждения
 static bool          s_ui_ok;       // экран поднят полностью (для веба)
 static bool          s_lvgl_up;     // #SD-2: порт LVGL запущен — шина SPI занята его кадрами
 static QueueHandle_t s_cmd_q;
@@ -1018,7 +1025,7 @@ static void view_set(int v)
     for (int i = 0; i < 4; i++) {
         if (i == v) lv_obj_clear_flag(panes[i], LV_OBJ_FLAG_HIDDEN);
         else        lv_obj_add_flag(panes[i], LV_OBJ_FLAG_HIDDEN);
-        btn_select(s_tab_btn[i], i == v);
+        if (i < 3) btn_select(s_tab_btn[i], i == v);   // #ALC-1: 4-я кнопка ряда — Cal, Conf — за «•••»
     }
     uint8_t cmd = TFT_CMD_VIEW;                     // перерисовать новую панель сразу
     xQueueSend(s_cmd_q, &cmd, 0);
@@ -1262,6 +1269,109 @@ static void clear_cb(lv_event_t *e)
     lv_label_set_text(s_confirm_ok_lbl, LV_SYMBOL_TRASH "  Clear");
     s_confirm_cmd = TFT_CMD_CLEAR;
     lv_obj_clear_flag(s_confirm, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ---------------- #ALC-1: калибровка порога 1 сигнализации по фону ----------------
+// Запрос 2026-10-17: кнопка Cal (место вкладки Conf; Conf ушла в ряд за «•••»): долгое
+// нажатие — меню калибровки по изотопам (#ACAL-6), короткое — вопрос «да/нет» и минута
+// набора CPS прибора по секундам (то же число, что у сигнализации, #CPS-1) с полоской на
+// экране спектра; набор прибора не идёт — его запускает tft_task. Итог пишется сам, без
+// окна: порог 1 = ceil(фон + ALC_Z * sigma), sigma = max(sqrt(фон), разброс по секундам) —
+// при фоне 60 cps это ~0.4 ложных срабатывания в час (Пуассон). Пороги 2..4, если новый
+// 1-й в них упёрся, сдвигаются вверх ровно до порядка. Собирает lv_timer в задаче LVGL
+// (только чтение счётчиков), считает и пишет NVS tft_task (стек во внутренней RAM, #ACAL-3).
+#define ALC_SAMPLES     60      // секунд набора (выбор пользователя)
+#define ALC_SKIP        2       // первые секунды после старта набора — неполное окно прибора
+#define ALC_TIMEOUT_MS  15000   // нет новых секунд набора — прибора нет / набор не пошёл
+#define ALC_Z           4.0
+static int       s_alc;               // 1 — идёт набор; пишет задача LVGL (и tft_task под замком)
+static int       s_alc_n, s_alc_skip;
+static double    s_alc_sum, s_alc_sq;
+static uint32_t  s_alc_max, s_alc_last_t, s_alc_last_ms;
+static int64_t   s_alc_last_st;
+static lv_obj_t *s_alc_box, *s_alc_lbl, *s_alc_bar;
+static volatile bool s_acq_now;       // tft_task: набор прибора идёт (#TFT-37)
+
+static void alc_show(bool on)   // под lvgl_port_lock
+{
+    if (on) lv_obj_clear_flag(s_alc_box, LV_OBJ_FLAG_HIDDEN);
+    else    lv_obj_add_flag(s_alc_box, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void alc_begin(void)     // под lvgl_port_lock
+{
+    s_alc_n = 0;
+    s_alc_skip = ALC_SKIP;
+    s_alc_sum = s_alc_sq = 0;
+    s_alc_max = 0;
+    s_alc_last_st = spectrum_cps_stamp_us();
+    s_alc_last_t = 0;
+    spectrum_get_cps(NULL, &s_alc_last_t);
+    s_alc_last_ms = lv_tick_get();
+    lv_bar_set_value(s_alc_bar, 0, LV_ANIM_OFF);
+    lv_label_set_text_fmt(s_alc_lbl, "Alarm calibration: background 0/%d s", ALC_SAMPLES);
+    alc_show(true);
+    s_alc = 1;
+}
+
+static void alc_timer_cb(lv_timer_t *tm)   // задача LVGL: только чтение счётчиков
+{
+    (void)tm;
+    if (s_alc != 1) return;
+    uint32_t now = lv_tick_get();
+    int64_t st = spectrum_cps_stamp_us();
+    if (st != s_alc_last_st) {
+        s_alc_last_st = st;
+        uint32_t cps = 0, tsec = 0;
+        // Новая секунда набора: STAT пришёл и время прибора сдвинулось (без набора не считаем).
+        if (spectrum_get_cps(&cps, &tsec) && tsec != s_alc_last_t) {
+            s_alc_last_t = tsec;
+            s_alc_last_ms = now;
+            if (s_alc_skip > 0) {
+                s_alc_skip--;
+            } else {
+                s_alc_sum += cps;
+                s_alc_sq  += (double)cps * cps;
+                if (cps > s_alc_max) s_alc_max = cps;
+                s_alc_n++;
+                lv_bar_set_value(s_alc_bar, s_alc_n, LV_ANIM_OFF);
+                lv_label_set_text_fmt(s_alc_lbl, "Alarm calibration: background %d/%d s", s_alc_n, ALC_SAMPLES);
+            }
+        }
+    }
+    if (s_alc_n >= ALC_SAMPLES) {
+        s_alc = 0;
+        lv_label_set_text(s_alc_lbl, "Alarm calibration: saving...");
+        uint8_t cmd = TFT_CMD_ALC_DONE;   // NVS — в tft_task
+        xQueueSend(s_cmd_q, &cmd, 0);
+    } else if (now - s_alc_last_ms > ALC_TIMEOUT_MS) {
+        s_alc = 0;
+        alc_show(false);
+        toast_show("Alarm calibration: no data from spectrometer", COL_RED_TXT);
+    }
+}
+
+static void cal_btn_cb(lv_event_t *e)   // короткое нажатие Cal
+{
+    (void)e;
+    if (s_alc == 1) {   // повторное нажатие во время набора — отмена
+        s_alc = 0;
+        alc_show(false);
+        toast_show("Alarm calibration cancelled", COL_WARN);
+        return;
+    }
+    lv_label_set_text(s_confirm_txt, "Calibrate alarm threshold\non background? (60 s)");
+    lv_label_set_text(s_confirm_ok_lbl, "Yes");
+    s_confirm_cmd = TFT_CMD_ALC_START;
+    lv_obj_clear_flag(s_confirm, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void conf_act_cb(lv_event_t *e)   // #ALC-1: Conf — в ряду за «•••»
+{
+    (void)e;
+    lv_obj_add_flag(s_acts, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_tabs, LV_OBJ_FLAG_HIDDEN);
+    view_set(3);
 }
 
 static void confirm_cb(lv_event_t *e)
@@ -2263,6 +2373,7 @@ static bool build_ui(void)
     lv_obj_align(s_ip, LV_ALIGN_TOP_RIGHT, -HDR_R_PAD, 22);
     lv_timer_create(dot_blink_cb, DOT_BLINK_MS, NULL);   // #TFT-39
     lv_timer_create(alm_blink_cb, 500, NULL);            // #ALM-1: мигание CPS при тревоге
+    lv_timer_create(cps_fast_cb, 50, NULL);              // #CPS-1: число CPS сразу по STAT
 
     // Панель «Спектр».
     s_pane_spec = mk_pane(scr);
@@ -2271,6 +2382,25 @@ static bool build_ui(void)
     lv_obj_set_pos(s_plot, PLOT_X, PLOT_Y);
     lv_obj_add_flag(s_plot, LV_OBJ_FLAG_CLICKABLE);   // #TFT-24: двойной тап — Lin/Log
     lv_obj_add_event_cb(s_plot, plot_tap_cb, LV_EVENT_SHORT_CLICKED, NULL);
+    // #ALC-1: прогресс калибровки порога сигнализации — по центру экрана (#ALC-2, запрос 2026-10-17).
+    s_alc_box = mk_rect(s_pane_spec, (TFT_H_RES - 260) / 2, (TFT_V_RES - 34) / 2, 260, 34, COL_PANEL);
+    lv_obj_set_style_border_color(s_alc_box, lv_color_hex(COL_BD), 0);
+    lv_obj_set_style_border_width(s_alc_box, 1, 0);
+    lv_obj_set_style_radius(s_alc_box, 4, 0);
+    s_alc_lbl = mk_label(s_alc_box, 8, 3, &lv_font_montserrat_12, COL_TXT, "");
+    s_alc_bar = lv_bar_create(s_alc_box);
+    lv_obj_remove_style_all(s_alc_bar);
+    lv_obj_set_pos(s_alc_bar, 8, 22);
+    lv_obj_set_size(s_alc_bar, 244, 6);
+    lv_obj_set_style_bg_color(s_alc_bar, lv_color_hex(COL_BD), 0);
+    lv_obj_set_style_bg_opa(s_alc_bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_alc_bar, 3, 0);
+    lv_obj_set_style_bg_color(s_alc_bar, lv_color_hex(COL_ACCENT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(s_alc_bar, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(s_alc_bar, 3, LV_PART_INDICATOR);
+    lv_bar_set_range(s_alc_bar, 0, ALC_SAMPLES);
+    lv_obj_add_flag(s_alc_box, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_create(alc_timer_cb, 100, NULL);
     for (int i = 0; i < N_YLAB; i++) s_ylab[i] = mk_tick(s_pane_spec, PLOT_X - 1, LV_TEXT_ALIGN_RIGHT, COL_TICK_Y);
     for (int i = 0; i < N_XLAB; i++) s_xlab[i] = mk_tick(s_pane_spec, 40, LV_TEXT_ALIGN_CENTER, COL_TICK_X);
     s_xunit = mk_tick(s_pane_spec, XUNIT_W, LV_TEXT_ALIGN_RIGHT, COL_AXIS);
@@ -2287,6 +2417,16 @@ static bool build_ui(void)
     s_live_btn = mk_button(s_pane_spec, PLOT_X + PLOT_W - 70, PLOT_Y + 4, 64, "Live", COL_ACCENT, COL_ACCENT,
                            LV_OPA_30, live_cb, 0);
     lv_obj_add_flag(s_live_btn, LV_OBJ_FLAG_HIDDEN);
+    // #ISO-1: список найденных нуклидов — правый верхний угол графика, по строке на нуклид.
+    for (int i = 0; i < ISOID_MAX_FOUND; i++) {
+        s_iso_lbl[i] = mk_label(s_pane_spec, 0, 0, &lv_font_montserrat_14, COL_TXT, "");
+        lv_obj_set_style_bg_color(s_iso_lbl[i], lv_color_hex(COL_BG), 0);
+        lv_obj_set_style_bg_opa(s_iso_lbl[i], LV_OPA_60, 0);
+        lv_obj_set_style_pad_hor(s_iso_lbl[i], 3, 0);
+        lv_obj_align(s_iso_lbl[i], LV_ALIGN_TOP_RIGHT, -(TFT_H_RES - PLOT_X - PLOT_W) - 4, PLOT_Y + 4 + i * 17);
+        lv_obj_add_flag(s_iso_lbl[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    s_iso_r = heap_caps_calloc(1, sizeof *s_iso_r, MALLOC_CAP_SPIRAM);
 
     // Панель «Монитор».
     s_pane_mon = mk_pane(scr);
@@ -2426,12 +2566,18 @@ static bool build_ui(void)
     const int by = BAR_Y + (TFT_V_RES - BAR_Y - BTN_H) / 2;
     // #TFT-36: вкладки — кнопки на местах Stop/Clear/Save/Files (ряд за «•••»),
     // чтобы при переключении кнопки вставали одна на другую.
-    static const char *const TABS[4] = {"Spectrum", "Monitor", "Waterfall", "Conf"};
-    for (int i = 0; i < 4; i++) {
+    static const char *const TABS[3] = {"Spectrum", "Monitor", "Waterfall"};
+    for (int i = 0; i < 3; i++) {
         s_tab_btn[i] = mk_button(s_tabs, ACT_X0 + i * ACT_STEP, by, ACT_W, TABS[i], COL_DIM, COL_TXT,
                                  LV_OPA_10, tab_cb, i);
         btn_select(s_tab_btn[i], i == 0);
     }
+    // #ALC-1: Cal — короткое нажатие: порог сигнализации по фону; долгое: меню изотопов.
+    s_tab_btn[3] = mk_button(s_tabs, ACT_X0 + 3 * ACT_STEP, by, ACT_W, "Cal", COL_DIM, COL_TXT,
+                             LV_OPA_10, cal_btn_cb, 0);
+    lv_obj_remove_event_cb(s_tab_btn[3], cal_btn_cb);   // mk_button вешает CLICKED — он есть и после долгого
+    lv_obj_add_event_cb(s_tab_btn[3], cal_btn_cb, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_add_event_cb(s_tab_btn[3], acal_open_cb, LV_EVENT_LONG_PRESSED, NULL);
     s_acts = mk_rect(scr, 0, 0, TFT_H_RES, TFT_V_RES, 0);   // как s_tabs: во весь экран
     lv_obj_set_style_bg_opa(s_acts, LV_OPA_TRANSP, 0);
     // #TFT-40: Stop в этом ряду убран — основная кнопка сама Start <-> Stop (#TFT-37),
@@ -2443,6 +2589,8 @@ static bool build_ui(void)
     // #TFT-34: просмотр файлов карты и сохранённых спектров (открывает папку Spectra).
     mk_button(s_acts, ACT_X0 + 2 * ACT_STEP, by, ACT_W, LV_SYMBOL_DIRECTORY " Files", COL_DIM, COL_TXT,
               LV_OPA_10, files_open_cb, 0);
+    mk_button(s_acts, ACT_X0 + 3 * ACT_STEP, by, ACT_W, LV_SYMBOL_SETTINGS " Conf", COL_DIM, COL_TXT,
+              LV_OPA_10, conf_act_cb, 0);   // #ALC-1: место вкладки Conf заняла Cal
     lv_obj_add_flag(s_acts, LV_OBJ_FLAG_HIDDEN);
     s_btn_start = mk_button(scr, START_X, by, BTN_W, LV_SYMBOL_PLAY "  Start", COL_ACCENT, COL_ACCENT,
                             LV_OPA_20, start_cb, 0);   // #TFT-37: Start <-> Stop
@@ -2759,12 +2907,20 @@ static void render_status(bool conn, const battery_status_t *bs, const char *ip)
     layout_status();
 }
 
+static uint32_t live_cps(void)   // #CPS-1: последний STAT прибора, не значение из снимка
+{
+    uint32_t c = s_snap ? s_snap->cps : 0;
+    spectrum_get_cps(&c, NULL);
+    return c;
+}
+
 static void render_header(bool valid)
 {
     char txt[16];
     if (valid) {
         const spectrum_data_t *sp = s_snap;
-        lv_label_set_text_fmt(s_cps_val, "%lu", (unsigned long)sp->cps);
+        uint32_t cps = live_cps();
+        lv_label_set_text_fmt(s_cps_val, "%lu", (unsigned long)cps);
         uint32_t t = sp->total_time_sec;
         lv_label_set_text_fmt(s_time_val, "%02lu:%02lu:%02lu",
                               (unsigned long)(t / 3600), (unsigned long)(t / 60 % 60), (unsigned long)(t % 60));
@@ -2772,7 +2928,7 @@ static void render_header(bool valid)
         lv_label_set_text(s_total_val, txt);
         // Доза — как в вебе: CPS * коэффициент прибора, только если он задан.
         if (spectrogram_get_dose_k() > 0) {
-            snprintf(txt, sizeof txt, "%.3f", (double)(sp->cps * spectrogram_get_dose_k()));   // %f — только newlib
+            snprintf(txt, sizeof txt, "%.3f", (double)(cps * spectrogram_get_dose_k()));   // %f — только newlib
             lv_label_set_text(s_dose_val, txt);
         }
     } else {
@@ -2853,10 +3009,39 @@ static void render_spectrum(bool valid, const char *msg)
             for (int yy = a; yy <= b; yy++) PX(x, yy) = s_c_line;
             prev = y;
         }
+        // #ISO-1: найденные нуклиды — линия над каждым их пиком (от верха графика до вершины
+        // пика с зазором 5 px) и список тех же цветов; техногенные первыми, природные — серым.
+        int nl = 0;
+        if (!s_saved_on && sp->calib_valid && s_iso_r && iso_live_get(s_iso_r)) {
+            const isoid_result_t *ir = s_iso_r;
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i < ir->n && nl < ISOID_MAX_FOUND; i++) {
+                    if ((pass == 0) == ir->f[i].natural) continue;
+                    uint32_t col = iso_live_color(ir, i);
+                    lv_color_t c = lv_color_hex(col);
+                    for (int k = 0; k < ir->f[i].n_mark; k++) {
+                        int x = (int)((ir->f[i].mark_ch[k] - SPEC_CH_FROM) / range * PLOT_W + 0.5f);
+                        if (x < 1 || x >= PLOT_W - 2) continue;
+                        int top = PLOT_H;
+                        for (int dx = -2; dx <= 2; dx++) {
+                            int yy = y_row(s_col[x + dx < 0 ? 0 : x + dx >= PLOT_W ? PLOT_W - 1 : x + dx], lg, ylo, yhi);
+                            if (yy < top) top = yy;
+                        }
+                        int y1 = top - 5 < 8 ? 8 : top - 5;
+                        for (int yy = 2; yy <= y1; yy++) PX(x, yy) = c;   // 1 px (запрос 2026-10-17)
+                    }
+                    lv_label_set_text(s_iso_lbl[nl], isoid_name(ir->f[i].src));
+                    lv_obj_set_style_text_color(s_iso_lbl[nl], c, 0);
+                    lv_obj_clear_flag(s_iso_lbl[nl], LV_OBJ_FLAG_HIDDEN);
+                    nl++;
+                }
+        }
+        for (int i = nl; i < ISOID_MAX_FOUND; i++) lv_obj_add_flag(s_iso_lbl[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(s_xunit, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_xunit, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < ISOID_MAX_FOUND; i++) lv_obj_add_flag(s_iso_lbl[i], LV_OBJ_FLAG_HIDDEN);   // #ISO-1
         lv_label_set_text(s_msg, msg ? msg : "");
         lv_obj_clear_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     }
@@ -2955,6 +3140,28 @@ static bool mon_pull(void)
 
 // ---------------- мониторинг: отрисовка ----------------
 
+// #ALC-2 (запрос 2026-10-17): линии порогов сигнализации на графике CPS — вкладка Monitor и
+// вид «на трубе». Порог 1 — всегда (если сигнализация включена), следующий — когда видимый
+// ряд превысил предыдущий; шкала Y включает показанные пороги. Цвета — не бирюзовый (CPS) и
+// не оранжевый (SMA). Пунктир 2 px прямо в буфер canvas.
+static const uint32_t THR_COL[CPS_ALARM_LEVELS] = { 0xF5E663, 0x9D8CFF, 0xFF4D4D, 0xFF66D9 };
+static int   s_thr_n;
+static float s_thr_v[CPS_ALARM_LEVELS];
+
+static void thr_draw(lv_color_t *buf, int w, int h, float mn, float mx)
+{
+    for (int i = 0; i < s_thr_n; i++) {
+        int y = (h - 1) - (int)((s_thr_v[i] - mn) / (mx - mn) * (h - 1) + 0.5f);
+        lv_color_t c = lv_color_hex(THR_COL[i]);
+        for (int dy = 0; dy < 2; dy++) {
+            int yy = y + dy;
+            if (yy < 0 || yy >= h) continue;
+            for (int x = 0; x < w; x++)
+                if (x % 13 < 8) buf[yy * w + x] = c;
+        }
+    }
+}
+
 // Ряд графика (s_iv_n > 0): последние MON_VIEW интервалов -> s_m_raw, SMA -> s_m_sma,
 // шкала Y по ним +8 %. Общий для вкладки Monitor и вида «на трубе» (#MNT-1).
 // Возвращает число точек; start — индекс первой в s_iv.
@@ -2979,6 +3186,27 @@ static int mon_series(int win, int *start_out, float *mn_out, float *mx_out)
         sma[k] = (float)(acc / (i + 1 < win ? i + 1 : win));
         mn = fminf(mn, fminf(raw[k], sma[k]));
         mx = fmaxf(mx, fmaxf(raw[k], sma[k]));
+    }
+    // #ALC-2: показанные пороги — в шкалу (1-й всегда, следующий — пока уровень выше предыдущего).
+    // #ALC-3 (2026-10-17, «фиолетовая видна постоянно»): уровень — последняя точка SMA, не максимум
+    // видимого ряда: один секундный всплеск над порогом 1 включал линию порога 2 (и шкалу до неё)
+    // на все MON_VIEW интервалов, пока точка не уйдёт с экрана.
+    // #ALC-4 (2026-10-18, «превысили порог 1 — график сразу вырос до порога 2»): шкала
+    // динамическая. Порог 1 — всегда в шкале; следующие шкалу не растягивают: линия появляется,
+    // когда видимый ряд подошёл к ней ближе 15 % (CPS ~990 при порогах 801/2500 давал шкалу
+    // 531..2646 — данные в нижней четверти).
+    s_thr_n = 0;
+    cps_alarm_cfg_t ac;
+    cps_alarm_get_config(&ac);
+    if (ac.enabled && cnt > 0) {
+        float dmx = mx;   // максимум видимого ряда (raw и SMA)
+        for (int i = 0; i < CPS_ALARM_LEVELS; i++) {
+            float v = (float)ac.th[i];
+            if (i > 0 && v > dmx * 1.15f) break;
+            s_thr_v[s_thr_n++] = v;
+            mn = fminf(mn, v);
+            mx = fmaxf(mx, v);
+        }
     }
     if (mx - mn < 1e-9f) mx = mn + 1;
     float pad = (mx - mn) * 0.08f;
@@ -3095,6 +3323,7 @@ static void render_monitor(const char *msg)
         }
 #undef MX_OF
 #undef MY_OF
+        thr_draw(s_mon_buf, MCH_W, MCH_H, mn, mx);   // #ALC-2: под линиями данных
         // Сырая линия акцентом, поверх — SMA оранжевым (как drawChart()).
         lv_draw_line_dsc_t ld;
         lv_draw_line_dsc_init(&ld);
@@ -3127,12 +3356,18 @@ static void mnt_layout_top(void)
 {
     static const lv_font_t *const F[4] = { &font_cps104, &font_cps80, &font_cps64, &lv_font_montserrat_28 };
     lv_obj_update_layout(s_mnt);
-    int col_x = MNT_PW;
-    lv_obj_t *const col[4] = { s_mnt_dot, s_mnt_batt, s_mnt_unit, s_mnt_dose };
-    for (int i = 0; i < 4; i++)
-        if (!lv_obj_has_flag(col[i], LV_OBJ_FLAG_HIDDEN) && lv_obj_get_width(col[i]) > 0 &&
-            lv_obj_get_x(col[i]) < col_x)
-            col_x = lv_obj_get_x(col[i]);
+    // #MNT-6 (2026-10-17, «сначала мелко, потом нормально»): левый край колонки справа —
+    // по ШИРИНАМ её объектов, а не по координатам: точка прибора до первого
+    // mnt_render_status() стоит в x 0 (выравнивается к батарее позже), место под число
+    // выходило отрицательным -> самый мелкий шрифт, а крупнее — только через 10 с.
+    // Строка 1: [точка][8][батарея] у правого края (без батареи — точка вплотную к краю).
+    int bw = lv_obj_get_width(s_mnt_batt);
+    int cw = bw + lv_obj_get_width(s_mnt_dot) + (bw > 0 ? 8 : 0);
+    lv_obj_t *const col[2] = { s_mnt_unit, s_mnt_dose };
+    for (int i = 0; i < 2; i++)
+        if (!lv_obj_has_flag(col[i], LV_OBJ_FLAG_HIDDEN) && lv_obj_get_width(col[i]) > cw)
+            cw = lv_obj_get_width(col[i]);
+    int col_x = MNT_PW - 8 - cw;
     int maxw = col_x - 8 - 8;
     char worst[16];
     const char *txt = lv_label_get_text(s_mnt_cps);
@@ -3164,17 +3399,50 @@ static void mnt_layout_top(void)
 static void mnt_render_cps(bool valid)
 {
     char txt[24];
-    if (valid) lv_label_set_text_fmt(s_mnt_cps, "%lu", (unsigned long)s_snap->cps);
+    uint32_t cps = live_cps();
+    if (valid) lv_label_set_text_fmt(s_mnt_cps, "%lu", (unsigned long)cps);
     else       lv_label_set_text(s_mnt_cps, "--");
     float k = spectrogram_get_dose_k();
     if (k > 0 && valid) {
-        snprintf(txt, sizeof txt, "%.3f uSv/h", (double)(s_snap->cps * k));
+        snprintf(txt, sizeof txt, "%.3f uSv/h", (double)(cps * k));
         lv_label_set_text(s_mnt_dose, txt);
         lv_obj_clear_flag(s_mnt_dose, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_mnt_dose, LV_OBJ_FLAG_HIDDEN);
     }
     mnt_layout_top();
+}
+
+// #CPS-1: число CPS — по приходу STAT (опрос 50 мс в задаче LVGL), не ждёт свипа,
+// пробуждения tft_task и перерисовки графика. Остальную шапку по-прежнему ведёт tft_task.
+// Стек задачи LVGL в PSRAM: spectrum_get_cps — только мьютекс, флеш/NVS не трогает.
+static void cps_fast_cb(lv_timer_t *tm)
+{
+    (void)tm;
+    static int64_t last;
+    int64_t st = spectrum_cps_stamp_us();
+    if (!st || st == last) return;
+    last = st;
+    uint32_t cps = 0;
+    if (!spectrum_get_cps(&cps, NULL)) return;   // данных нет — «--» ставит tft_task
+    char txt[24];
+    float k = spectrogram_get_dose_k();
+    if (s_mount && s_mnt_cps) {
+        lv_label_set_text_fmt(s_mnt_cps, "%lu", (unsigned long)cps);
+        if (k > 0) {
+            snprintf(txt, sizeof txt, "%.3f uSv/h", (double)(cps * k));
+            lv_label_set_text(s_mnt_dose, txt);
+        }
+        mnt_layout_top();
+    } else {
+        lv_label_set_text_fmt(s_cps_val, "%lu", (unsigned long)cps);
+        if (k > 0) {
+            snprintf(txt, sizeof txt, "%.3f", (double)(cps * k));
+            lv_label_set_text(s_dose_val, txt);
+        }
+        lv_obj_update_layout(s_cps_val);
+        lv_obj_align_to(s_cps_unit, s_cps_val, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, -5);
+    }
 }
 
 // Батарея (как #batt-chip) и точка прибора у правого края. Под lvgl_port_lock.
@@ -3283,6 +3551,7 @@ static void mnt_render_monitor(const char *msg)
             s_m_ps[k].y = (lv_coord_t)MMY_OF(s_m_sma[k]);
         }
 #undef MMY_OF
+        thr_draw(s_mnt_mon_buf, MNT_W, MNT_MON_H, mn, mx);   // #ALC-2
         lv_draw_line_dsc_t ld;
         lv_draw_line_dsc_init(&ld);
         ld.width = 2;
@@ -3312,6 +3581,7 @@ static void mnt_render_monitor(const char *msg)
 static void mount_set(bool on)
 {
     s_mount = on;
+    if (on) { s_mnt_fi = 0; s_mnt_up_since = 0; }   // #MNT-6: с крупнейшего — мельче станет сразу, если не влезет
     if (on) lv_obj_clear_flag(s_mnt, LV_OBJ_FLAG_HIDDEN);
     else    lv_obj_add_flag(s_mnt, LV_OBJ_FLAG_HIDDEN);
     lv_disp_set_rotation(NULL, on ? MNT_ROT : LV_DISP_ROT_NONE);
@@ -3881,6 +4151,36 @@ static void acq_hint(bool start)
     s_acq_hint_until = xTaskGetTickCount() + pdMS_TO_TICKS(ACQ_HINT_MS);
 }
 
+// #ALC-1: итог минуты фона -> порог 1 (и порядок 2..4) -> NVS. Только tft_task.
+static void alc_finish(void)
+{
+    int n = s_alc_n;
+    double m = n ? s_alc_sum / n : 0, var = n ? s_alc_sq / n - m * m : 0;
+    double s_meas = var > 0 ? sqrt(var) : 0, s_poi = sqrt(m);
+    double sig = s_meas > s_poi ? s_meas : s_poi;
+    double thd = ceil(m + ALC_Z * sig);
+    cps_alarm_cfg_t c;
+    cps_alarm_get_config(&c);
+    uint32_t th = thd < 1 ? 1 : thd > CPS_ALARM_TH_MAX - 3 ? CPS_ALARM_TH_MAX - 3 : (uint32_t)thd;
+    c.th[0] = th;
+    for (int i = 1; i < CPS_ALARM_LEVELS; i++)   // пороги строго по возрастанию
+        if (c.th[i] <= c.th[i - 1]) c.th[i] = c.th[i - 1] + 1;
+    int r = cps_alarm_set_config(&c);
+    bool unstable = s_meas > 1.5 * s_poi;   // разброс больше статистического — фон «плавал» / источник рядом
+    ESP_LOGI(TAG, "#ALC-1: фон %.2f cps за %d с, разброс %.2f (Пуассон %.2f), макс %lu -> порог 1 = %lu, "
+             "пороги %lu/%lu/%lu/%lu, NVS %d", m, n, s_meas, s_poi, (unsigned long)s_alc_max, (unsigned long)th,
+             (unsigned long)c.th[0], (unsigned long)c.th[1], (unsigned long)c.th[2], (unsigned long)c.th[3], r);
+    char msg[64];
+    if (r != 0)        snprintf(msg, sizeof msg, "Alarm calibration: save failed");
+    else if (unstable) snprintf(msg, sizeof msg, "Alarm T1 = %lu cps (bg %.1f, unstable)", (unsigned long)th, m);
+    else               snprintf(msg, sizeof msg, "Alarm T1 = %lu cps (bg %.1f)%s", (unsigned long)th, m,
+                                c.enabled ? "" : ", alarm OFF");
+    lvgl_port_lock(0);
+    alc_show(false);
+    toast_show(msg, r != 0 ? COL_RED_TXT : unstable || !c.enabled ? COL_WARN : COL_ACCENT);
+    lvgl_port_unlock();
+}
+
 static void send_device_cmd(uint8_t cmd)
 {
     bool start = cmd == TFT_CMD_START;
@@ -4018,6 +4318,14 @@ static void tft_task(void *arg)
             lv_obj_add_flag(s_live_btn, LV_OBJ_FLAG_HIDDEN);
             lvgl_port_unlock();
         }
+        if (cmd == TFT_CMD_ALC_START) {           // #ALC-1: «да» — при остановленном наборе запустить его
+            if (!s_acq_now) send_device_cmd(TFT_CMD_START);
+            lvgl_port_lock(0);
+            view_set(0);      // полоска прогресса — на экране спектра
+            alc_begin();
+            lvgl_port_unlock();
+        }
+        if (cmd == TFT_CMD_ALC_DONE) alc_finish();
         if (cmd == TFT_CMD_ACAL_APPLY) {          // #CAL-2: на плате и в приборе
             spectrum_set_calibration(s_acal_apply, s_acal_apply_order);   // файл — main loop
             int dr = usb_host_write_device_calibration_async(s_acal_apply, s_acal_apply_order);   // #CAL-4
@@ -4158,6 +4466,7 @@ static void tft_task(void *arg)
         } else {
             s_acq_hint = 0;
         }
+        s_acq_now = acq;   // #ALC-1
         int run = view == 0 ? acq : view == 1 ? s_ms.running : view == 2 ? s_wf_st.recording : 0;   // VIEW_MNT — 0
         bool rec_changed = (int)acq != last_acq || run != last_run;
         if (changed || mon_changed || wf_changed || view_changed || stat != last_stat || ip_changed || toast_due ||

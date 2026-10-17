@@ -83,6 +83,15 @@ static uint32_t *s_hist_staging;                  // [SPECTRUM_CHANNELS], PSRAM
 static uint32_t  s_stage_next = UINT32_MAX;       // след. ожидаемый канал; UINT32_MAX = свип не активен
 static bool      s_stage_ok = false;              // непрерывность с offset==0 не нарушена
 static uint32_t  s_hist_commits = 0;              // опубликованных полных свипов
+// #CPS-1 (запрос 2026-10-17, «медленная реакция на источник»): CPS прибора (STAT) раньше
+// публиковался только вместе со свипом гистограммы (#FW-8), т.е. ждал приёма всех 8192
+// каналов. Число CPS не связано с bins — отдаём его сразу по приходу STAT. Счёт, время и
+// bins по-прежнему публикуются когерентно на коммите. Пишет CDC-задача, читают без лока
+// (32-бит на ESP32 атомарны; us — только для «свежести» и замера).
+static volatile uint32_t s_live_cps;
+static volatile int64_t  s_live_cps_us;      // 0 — STAT ещё не было
+static volatile int64_t  s_stat_lead_sum;    // замер: STAT -> коммит свипа, мс
+static volatile uint32_t s_stat_lead_n, s_stat_lead_min = UINT32_MAX, s_stat_lead_max;
 static uint32_t  s_hist_drops = 0;                // отброшенных рваных свипов
 typedef struct {
     uint32_t total_time_sec;
@@ -359,6 +368,14 @@ void spectrum_process_histogram_chunk(const uint8_t *data, size_t len)
                     s_spectrum.cpu_load       = s_stat_stage.cpu_load;
                     s_spectrum.cps            = s_stat_stage.cps;
                     s_spectrum.lost_impulses  = s_stat_stage.lost_impulses;
+                    if (s_live_cps_us) {   // #CPS-1: на сколько STAT обгоняет коммит
+                        int64_t d = (esp_timer_get_time() - s_live_cps_us) / 1000;
+                        uint32_t ms = d < 0 ? 0 : d > 100000 ? 100000 : (uint32_t)d;
+                        s_stat_lead_sum += ms;
+                        s_stat_lead_n++;
+                        if (ms < s_stat_lead_min) s_stat_lead_min = ms;
+                        if (ms > s_stat_lead_max) s_stat_lead_max = ms;
+                    }
                     s_spectrum.pulse_width    = s_stat_stage.pulse_width;
                     s_stat_stage.fresh = false;
                 } else if (s_spectrum.valid) {
@@ -385,6 +402,8 @@ void spectrum_process_histogram_chunk(const uint8_t *data, size_t len)
 void spectrum_process_stat_packet(const uint8_t *data, size_t len)
 {
     if (len < 10) return;
+    s_live_cps    = data[6] | (data[7]<<8) | (data[8]<<16) | (data[9]<<24);   // #CPS-1
+    s_live_cps_us = esp_timer_get_time();
     // #FW-8: STAT — в staging, публикация вместе со свипом гистограммы (когерентность
     // время↔counts для dur строк водопада). Без staging — старый прямой путь.
     if (s_hist_staging) {
@@ -409,6 +428,18 @@ void spectrum_process_stat_packet(const uint8_t *data, size_t len)
     if (len >= 18)
         s_spectrum.pulse_width = data[14] | (data[15]<<8) | (data[16]<<16) | (data[17]<<24);
     SPEC_UNLOCK();
+}
+
+// #CPS-1: метка прихода последнего STAT (esp_timer, мкс; 0 — не было) — по ней экран
+// и веб видят новое значение CPS; и замер «STAT раньше коммита свипа на N мс».
+int64_t spectrum_cps_stamp_us(void) { return s_live_cps_us; }
+void spectrum_get_stat_lead(uint32_t *min_ms, uint32_t *avg_ms, uint32_t *max_ms, uint32_t *n)
+{
+    uint32_t cnt = s_stat_lead_n;
+    if (n)      *n      = cnt;
+    if (min_ms) *min_ms = cnt ? s_stat_lead_min : 0;
+    if (max_ms) *max_ms = s_stat_lead_max;
+    if (avg_ms) *avg_ms = cnt ? (uint32_t)(s_stat_lead_sum / cnt) : 0;
 }
 
 // #FW-8: диагностика сборки свипов для /api/spectrum JSON и верификации фикса.
@@ -746,7 +777,8 @@ bool spectrum_get_cps(uint32_t *cps, uint32_t *time_sec)
 {
     SPEC_LOCK();
     bool v = s_spectrum.valid;
-    if (cps)      *cps      = s_spectrum.cps;
+    // #CPS-1: последний STAT прибора, не дожидаясь свипа; до первого STAT — из свипа
+    if (cps)      *cps      = s_live_cps_us ? s_live_cps : s_spectrum.cps;
     if (time_sec) *time_sec = s_spectrum.total_time_sec;
     SPEC_UNLOCK();
     return v;
