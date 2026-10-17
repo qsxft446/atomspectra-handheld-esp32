@@ -15,7 +15,7 @@
 static const double REF[5] = { 7.76253299801587, 0.267995214878602, 8.07264835375737e-05,
                                -3.28147308346862e-08, 4.60405912953082e-12 };
 static uint32_t bins[NMAX];
-static unsigned char ws[NMAX * 20 + 16384];
+static unsigned char ws[NMAX * 20 + 49152];
 int g_failures;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); g_failures++; } } while (0)
 
@@ -147,7 +147,7 @@ int main(int argc, char **argv)
         "svk/altai_marinelli.txt", "svk/dski_gs5050.txt", "svk/bg_cs137.txt", "svk/bg_kcl.txt",
         "svk/bg_office.txt", "ra226_164s.txt", "ra226_926s.txt", "live_cs137_co60_63s.txt",
         "live_cs137_co60_525s.txt", "live_cs137_co60_36s.txt",
-        "live_uglass_759s.txt",
+        "live_uglass_759s.txt", "live_bg_concrete_571s.txt",
     };
     isoid_result_t r[sizeof FILES / sizeof FILES[0]];
     const char *only = NULL;
@@ -190,6 +190,8 @@ int main(int argc, char **argv)
     CHECK(!has(&r[14], "Na-22"));
     // урановое стекло + Co-60 рядом, гранит (Th 583/2614 без видимой 238): U-238, U-235, Co-60; не Bi-207
     CHECK(has(&r[15], "U-238") && has(&r[15], "U-235") && has(&r[15], "Co-60") && !has(&r[15], "Bi-207"));
+    // фон в бетонном помещении: K-40, Th; 903 кэВ = Ac-228 911/969 — не Y-88 898
+    CHECK(has(&r[16], "K-40") && manmade(&r[16]) == 0);
     if (g_failures) { printf("ISOID: %d FAILED\n", g_failures); return 1; }
     printf("ISOID: ALL PASSED\n");
     return 0;

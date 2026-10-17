@@ -522,7 +522,9 @@ static int find_peaks(const uint32_t *raw, int n, const double *c, int order, fl
 
 typedef struct { double kev, w; bool xray, need; } bl_t;   // need — обязательная опора (511 Na-22)
 
-// Бленды линий источника s (ближе 1.2 FWHM — NaI их не разделяет) в [emin, emax]. Возвращает число.
+// Бленды линий источника s (ближе 1 FWHM — NaI их не разделяет) в [emin, emax]. Возвращает число.
+// #ISO-4: было 1.2 — Ac-228 911 и 969 (1.05 FWHM) сливались в бленд ~935, а NaI показывает пик
+// почти чистой 911 (903 у прибора пользователя), и торий его не узнавал (ложный Y-88 898 в бетоне).
 static int blends(int s, double emin, double emax, bl_t *b)
 {
     int nb = 0;
@@ -532,7 +534,7 @@ static int blends(int s, double emin, double emax, bl_t *b)
         double w = l->inten * eff(l->kev);
         // техногенные: 70-95 кэВ — область рентгена Pb (защита), Bi/Po/Th (ряды U/Th) — только опора
         unsigned char xr = l->xray || (!SRC[s].natural && l->kev >= 70 && l->kev <= 95);
-        if (nb > 0 && l->kev - b[nb - 1].kev < 1.2 * fwhm_kev(l->kev) && xr == b[nb - 1].xray) {
+        if (nb > 0 && l->kev - b[nb - 1].kev < 1.0 * fwhm_kev(l->kev) && xr == b[nb - 1].xray) {
             double W = b[nb - 1].w + w;
             b[nb - 1].kev = (b[nb - 1].kev * b[nb - 1].w + l->kev * w) / W;
             b[nb - 1].w = W;
@@ -562,19 +564,35 @@ static int nearest(const peak_t *pk, int np, double e, double tol)
 // найденной интенсивности (Zn-65 1115 / Bi-214 1120, Ba-133 356 / Pb-214 352, Cs-134 796 /
 // Ac-228 795; а Cs-137 662 рядом со слабой Bi-214 665 — вес 4 %, объясняется на ~15 %).
 static double *s_nat_S;   // [64], 0 — цепочки не видно; лежит в рабочем буфере (PSRAM на плате)
+// #ISO-4: локальные масштабы цепочки — по каждой её найденной заметной линии (энергия, площадь/вес).
+// Модель эффективности одна на весь диапазон, и масштабы по разным линиям расходятся в разы (Th в
+// бетоне: по 238 — 60, по 583 — 160, по 2614 — 375); для проверки пика берётся ближайшая по энергии.
+#define NAT_PTS 16
+// Найденная гамма-линия природной цепочки: энергия, пик, вес, локальный масштаб, «заметная».
+typedef struct { float e, S, w; short p; bool prom; } natpt_t;
+static natpt_t (*s_nat_pt)[NAT_PTS];
+static int *s_nat_np;
 
-static bool overlaps_natural(double e, double net, double emin, double emax)
+static bool overlaps_natural(int pp, double e, double net)
 {
-    bl_t b[MAX_BL];
     for (int s = 0; s < NSRC && s < 64; s++) {
         if (!SRC[s].natural || s_nat_S[s] <= 0) continue;
-        int nb = blends(s, emin, emax, b);
-        double wc = 0;
-        for (int i = 0; i < nb; i++) if (!b[i].xray && b[i].w > wc) wc = b[i].w;
-        for (int i = 0; i < nb; i++)
-            if (!b[i].xray && fabs(b[i].kev - e) <= 0.6 * fwhm_kev(e) + 2 &&
-                (s_nat_S[s] * b[i].w >= NAT_EXPL * net || b[i].w >= NAT_SHARE * wc))
+        double wc = 0, S = s_nat_S[s], de = 1e9;
+        for (int k = 0; k < s_nat_np[s]; k++) {
+            const natpt_t *q = &s_nat_pt[s][k];
+            if (q->w > wc) wc = q->w;
+            // ближайшая заметная — на ДРУГОМ пике (на этом же пик объяснял бы сам себя: Am-241 59.5,
+            // слившийся с 53 радия)
+            if (q->prom && q->p != pp && fabs(q->e - e) < de) { de = fabs(q->e - e); S = q->S; }
+        }
+        for (int k = 0; k < s_nat_np[s]; k++) {
+            const natpt_t *q = &s_nat_pt[s][k];
+            if (q->p == pp && (S * q->w >= NAT_EXPL * net || q->w >= NAT_SHARE * wc)) {
+                DBG("    overlap: %.1f keV peak is %s %.1f (S %.0f w %.2f -> %.0f of %.0f, share %.2f)\n", e,
+                    SRC[s].name, q->e, S, q->w, S * q->w, net, wc > 0 ? q->w / wc : 0);
                 return true;
+            }
+        }
     }
     return false;
 }
@@ -588,7 +606,7 @@ struct eval_s {
 };
 
 // Хвост рабочего буфера: две оценки и масштабы природных цепочек (не .bss — внутренняя RAM).
-typedef struct { eval_t E, best; double nat_S[64]; } tail_t;
+typedef struct { eval_t E, best; double nat_S[64]; natpt_t nat_pt[64][NAT_PTS]; int nat_np[64]; } tail_t;
 static size_t ws_tail(void) { return sizeof(tail_t) + 16; }
 
 // Оценка источника s по остаточным площадям пиков.
@@ -671,7 +689,7 @@ static void evaluate(int s, const uint32_t *y, int n, const double *c, int order
             // линия должна заметно объяснять пик (>= 30 %): слабая 1168 Cs-134 (1.8 %) на пике
             // Co-60 1173 не подтверждение
             if (S * E->b[i].w < 0.3 * pk[p].net) continue;
-            indep = !overlaps_natural(E->b[i].kev, pk[p].net, emin, emax);
+            indep = !overlaps_natural(p, E->b[i].kev, pk[p].net);
         }
         if (!indep) { E->sig = sig_c; return; }   // ok = false: не отличить от природной линии
     }
@@ -706,6 +724,8 @@ int isoid_run(const uint32_t *bins, int n, const double *cal, int order, void *w
     uintptr_t tp = ((uintptr_t)(pk + MAX_PEAKS) + 15) & ~(uintptr_t)15;
     tail_t *T = (tail_t *)tp;
     s_nat_S = T->nat_S;
+    s_nat_pt = T->nat_pt;
+    s_nat_np = T->nat_np;
     int np = find_peaks(bins, n, cal, order, f, pk);
     out->n_peaks = np;
     // #ISO-3: разрешение — медиана «ширина/модель» сильных уединённых пиков 250-1300 кэВ: ниже —
@@ -741,22 +761,74 @@ int isoid_run(const uint32_t *bins, int n, const double *cal, int order, void *w
 #define best (T->best)
     for (int s = 0; s < NSRC && s < 64; s++) {
         s_nat_S[s] = 0;
+        s_nat_np[s] = 0;
         if (!SRC[s].natural) continue;
         evaluate(s, bins, n, cal, order, pk, np, emin, emax, &E);
-        if (E.sig >= Z_CHAR) { s_nat_S[s] = E.S; continue; }
-        // Характерная не видна (238 тория под ураном), но видны >= 2 другие заметные линии (583 и
-        // 2614 тория гранитных стен) — цепочка тоже присутствует; масштаб — по самой сильной из них.
-        // Иначе 583 Tl-208 при шкале -3 % отдавалась Bi-207 570.
-        double wc = 0, Sm = 0;
+        {   // #ISO-4: найденные гамма-линии цепочки — пик, вес, локальный масштаб
+            double wc0 = 0;
+            for (int i = 0; i < E.nb; i++) if (!E.b[i].xray && E.b[i].w > wc0) wc0 = E.b[i].w;
+            for (int i = 0; i < E.nb && s_nat_np[s] < NAT_PTS; i++) {
+                int p = E.pk[i];
+                if (E.b[i].xray || p < 0) continue;
+                natpt_t *q = &s_nat_pt[s][s_nat_np[s]++];
+                q->e = (float)E.b[i].kev;
+                q->w = (float)E.b[i].w;
+                q->S = (float)(pk[p].net / E.b[i].w);
+                q->p = (short)p;
+                q->prom = !pk[p].bs && pk[p].sig >= Z_CHAR && E.b[i].w >= 0.05 * wc0;
+            }
+        }
+    }
+    // #ISO-4: какие природные цепочки присутствуют — предварительный жадный проход только по ним, с
+    // вычитанием (как основной). «Характерная видна» обманывалась чужими пиками: 238 тория стоит на
+    // 242 Pb-214 радия, и «торий» в чистом Ra отнимал у Cs-137 его 662. Площади потом восстанавливаются.
+    {
+        float res0[MAX_PEAKS];
+        bool nused[64] = { false };
+        for (int k = 0; k < np; k++) res0[k] = pk[k].res;
+        for (;;) {
+            int bs = -1;
+            double bscore = 0, bS = 0;
+            for (int s = 0; s < NSRC && s < 64; s++) {
+                if (!SRC[s].natural || nused[s]) continue;
+                evaluate(s, bins, n, cal, order, pk, np, emin, emax, &E);
+                if (!E.ok) continue;
+                double score = E.zsum * E.conf;
+                if (score > bscore) { bscore = score; bs = s; bS = E.S; }
+            }
+            if (bs < 0) break;
+            nused[bs] = true;
+            s_nat_S[bs] = bS;
+            evaluate(bs, bins, n, cal, order, pk, np, emin, emax, &E);
+            for (int i = 0; i < E.nb; i++) {
+                int p = E.pk[i];
+                if (p < 0) continue;
+                pk[p].res -= (float)(E.S * E.b[i].w);
+                if (pk[p].res < 0) pk[p].res = 0;
+            }
+        }
+        for (int k = 0; k < np; k++) pk[k].res = res0[k];
+    }
+    // Характерная не видна (238 тория под ураном), но видны >= 2 другие заметные линии (583 и 2614
+    // тория гранитных стен) — цепочка тоже присутствует; масштаб — по самой сильной из них. Иначе 583
+    // Tl-208 при шкале -3 % отдавалась Bi-207 570. Засчитываются только пики, не занятые цепочкой с
+    // видимой характерной: в чистом Ra линии тория 338/583 стоят на пиках радия 352/609 — «торий»
+    // завышенного масштаба отнимал у Cs-137 его 662 (через Ac-228 675).
+    for (int s = 0; s < NSRC && s < 64; s++) {
+        if (!SRC[s].natural || s_nat_S[s] > 0) continue;
+        double Sm = 0;
         int seen = 0;
-        for (int i = 0; i < E.nb; i++) if (!E.b[i].xray && E.b[i].w > wc) wc = E.b[i].w;
-        for (int i = 0; i < E.nb; i++) {
-            int p = E.pk[i];
-            // >= 5 % веса характерной: 2614 тория по «выход x эффективность» лишь 9 %, но над ней
-            // почти нет подложки — на деле это самая заметная его линия
-            if (E.b[i].xray || p < 0 || pk[p].bs || pk[p].sig < Z_CHAR || E.b[i].w < 0.05 * wc) continue;
+        for (int k = 0; k < s_nat_np[s]; k++) {
+            const natpt_t *q = &s_nat_pt[s][k];
+            if (!q->prom) continue;
+            bool taken = false;
+            for (int o = 0; o < NSRC && o < 64 && !taken; o++) {
+                if (o == s || !SRC[o].natural || s_nat_S[o] <= 0) continue;
+                for (int j = 0; j < s_nat_np[o] && !taken; j++) taken = s_nat_pt[o][j].p == q->p;
+            }
+            if (taken) continue;
             seen++;
-            if (pk[p].net / E.b[i].w > Sm) Sm = pk[p].net / E.b[i].w;
+            if (q->S > Sm) Sm = q->S;
         }
         if (seen >= 2) s_nat_S[s] = Sm;
     }
