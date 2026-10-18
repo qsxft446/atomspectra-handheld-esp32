@@ -34,7 +34,8 @@ The screen is a mini copy of the web UI (LVGL 8):
   in grey); the same in the web UI. Library of 30 sources (natural U/Th series, K-40, Cs-137,
   Co-60, Am-241, Ba-133, Na-22, Eu-152, I-131 and more), nuclide-to-spectrum method (LSRM)
   aware of NaI artefacts. The board tunes itself to the AtomSpectra model in use: resolution
-  and scale drift (count rate, temperature) are estimated from the spectrum itself.
+  and scale drift (count rate, temperature) are estimated from the spectrum itself. Each name
+  shows a detection quality in percent (significance and completeness of the found lines).
 - **Conf** (button in the "•••" row) — Indoor / Outdoor network mode, **WiFi setup from the screen** (network scan,
   password on an on-screen keyboard, checked before saving), channel window.
   Without the home network the board no longer reboots into Outdoor — it retries every
@@ -83,6 +84,7 @@ The screen is a mini copy of the web UI (LVGL 8):
   flash writes disturbed USB data reception.
 - **"Files"** web page: view (spectrum plot, monitoring CSV, waterfall image), download,
   delete one or many.
+- **"Service"** page: live ESP32 log (colour-coded, last 64 KB) for diagnostics without a cable.
 - **Firmware update over WiFi** by file upload ("System" page), with rollback if the new
   firmware does not start.
 - Ported fixes from newer original releases: recovery from USB stalls, acquisition

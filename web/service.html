@@ -50,6 +50,7 @@ pre.preview{ margin-top:12px; font-size:11px; line-height:1.5; color:#9aa496; ba
 .console .btn.sm{ padding:8px 13px; font-size:12.5px; }
 .grp{ display:flex; gap:8px; }
 .inp{ background:#0c0f0b; border:1px solid #283024; color:#e8efe2; padding:9px 12px; border-radius:8px; font-size:12px; outline:none; }
+#esplog{ font-size:11px; line-height:1.5; color:#9aa496; background:#0b0e0a; border:1px solid #1b211a; border-radius:8px; padding:10px 12px; height:420px; overflow:auto; white-space:pre-wrap; word-break:break-all; margin:12px 0 0; }
 #cmd-log{ font-size:11.5px; line-height:1.6; color:#7c887c; background:#0b0e0a; border:1px solid #1b211a; border-radius:8px; padding:10px 12px; max-height:200px; overflow:auto; white-space:pre; margin-top:12px; }
 </style>
 </head>
@@ -77,6 +78,16 @@ pre.preview{ margin-top:12px; font-size:11px; line-height:1.5; color:#9aa496; ba
 <div class="grp"><input class="inp" id="cmd" data-i18n-placeholder="ph.cmd" placeholder="команда, напр. -inf" style="width:220px;max-width:50vw"><button class="btn sm green" onclick="sendCmd()" data-i18n="btn.send">Send</button></div>
 </div>
 <pre id="cmd-log" style="display:none"></pre>
+</section>
+
+<section class="panel console">
+<div class="ttl"><span style="color:var(--accent)">&#9783;</span> <span data-i18n="elog.title">Лог ESP32</span></div>
+<div class="console-row">
+<button class="btn sm" id="elog-pause" onclick="elogToggle()" data-i18n="elog.pause">Пауза</button>
+<button class="btn sm" onclick="elogClear()" data-i18n="elog.clear">Очистить</button>
+<span class="mut" style="font-size:11px" data-i18n="elog.hint">Последние 64 КБ вывода платы, обновление раз в секунду</span>
+</div>
+<pre id="esplog"></pre>
 </section>
 
 <div class="grid">
@@ -176,7 +187,10 @@ var DICT={
   "restore.applying":"Отправка настроек в прибор...",
   "restore.ok":"Готово — настройки восстановлены",
   "restore.err":"Ошибка восстановления",
-  "restore.noDevice":"Прибор не подключён"
+  "restore.noDevice":"Прибор не подключён",
+  "elog.title":"Лог ESP32","elog.pause":"Пауза","elog.resume":"Продолжить","elog.clear":"Очистить",
+  "elog.hint":"Последние 64 КБ вывода платы, обновление раз в секунду",
+  "elog.reboot":"плата перезагрузилась","elog.lost":"часть строк пропущена"
  },
  en:{
   "page.title":"AtomSpectra · Service",
@@ -233,7 +247,10 @@ var DICT={
   "restore.applying":"Sending settings to device...",
   "restore.ok":"Done — settings restored",
   "restore.err":"Restore error",
-  "restore.noDevice":"Device not connected"
+  "restore.noDevice":"Device not connected",
+  "elog.title":"ESP32 log","elog.pause":"Pause","elog.resume":"Resume","elog.clear":"Clear",
+  "elog.hint":"Last 64 KB of board output, refreshed every second",
+  "elog.reboot":"board rebooted","elog.lost":"some lines skipped"
  }
 };
 var LANG=(function(){try{return localStorage.getItem("aswf-lang")||"ru";}catch(e){return"ru";}})();
@@ -268,6 +285,55 @@ async function requestInfo(){await post("/api/command",{body:"-inf"});await post
 async function sendCmd(){var c=document.getElementById("cmd").value;if(!c)return;await post("/api/command",{body:c});lg(tfmt("log.sent",c));setTimeout(pollDevLog,600);setTimeout(pollDevLog,1500)}
 function toggleLogPanel(){logEl.style.display=logEl.style.display==="none"?"block":"none"}
 document.getElementById("cmd").addEventListener("keydown",function(e){if(e.key==="Enter")sendCmd()});
+
+/* #LOG-1: лог ESP32 — /api/esplog?since=N раз в 1 с (X-Next — следующая позиция). Ошибки красным,
+   предупреждения жёлтым; прокрутка держится внизу, пока её не увели вверх; в окне до 3000 строк. */
+var elog=document.getElementById("esplog"),elogPos=-1,elogPaused=false,elogBusy=false;
+/* Раскраска строки «I (1018) main: текст»: уровень — своим цветом, время — тусклое, тег — цвет
+   по хешу имени (у модуля всегда один), текст ошибок/предупреждений — цветом уровня. */
+var ELOG_LVL={E:"#ff6b63",W:"#f0c45a",I:"#34d3c0",D:"#6ea8ff",V:"#8a9686"};
+var ELOG_TAG=["#7fd1ff","#c49bff","#ffa66b","#8ee07a","#ff8fc8","#e8d66b","#6be0c8","#ff9a8a","#a3b8ff","#d0e07a","#f5b3ff","#7ab8e0"];
+function elogTagCol(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return ELOG_TAG[h%ELOG_TAG.length];}
+function elogSpan(d,txt,col){var s=document.createElement("span");s.textContent=txt;if(col)s.style.color=col;d.appendChild(s);}
+function elogAdd(txt,col){
+ var stick=elog.scrollTop+elog.clientHeight>=elog.scrollHeight-24;
+ txt.split("\n").forEach(function(l){
+  if(!l)return;
+  var d=document.createElement("div"),m=/^([EWIDV]) \((\d+)\) ([^:]{1,24}):(.*)$/.exec(l);
+  if(col||!m){d.textContent=l;d.style.color=col||"";elog.appendChild(d);return;}
+  var lc=ELOG_LVL[m[1]];
+  elogSpan(d,m[1]+" ",lc);
+  elogSpan(d,"("+m[2]+") ","#5b655a");
+  elogSpan(d,m[3]+":",elogTagCol(m[3]));
+  elogSpan(d,m[4],m[1]==="E"||m[1]==="W"?lc:"#cfd6cd");
+  if(m[1]==="E")d.style.background="rgba(255,90,80,.07)";
+  elog.appendChild(d);
+ });
+ while(elog.childNodes.length>3000)elog.removeChild(elog.firstChild);
+ if(stick)elog.scrollTop=elog.scrollHeight;
+}
+async function elogPoll(){
+ if(elogPaused||elogBusy||document.hidden)return;
+ elogBusy=true;
+ try{
+  var r=await fetch("/api/esplog?since="+(elogPos<0?0:elogPos),{cache:"no-store"});
+  if(r.ok){
+   var nx=parseInt(r.headers.get("X-Next"),10),txt=await r.text();
+   if(elogPos>=0&&nx<elogPos)elogAdd("--- "+t("elog.reboot")+" ---","var(--accent)");
+   else if(elogPos>0&&r.headers.get("X-Lost")==="1")elogAdd("--- "+t("elog.lost")+" ---","var(--accent)");
+   elogAdd(txt);
+   if(!isNaN(nx))elogPos=nx;
+  }
+ }catch(e){}
+ elogBusy=false;
+}
+function elogToggle(){
+ elogPaused=!elogPaused;
+ var b=document.getElementById("elog-pause");
+ b.setAttribute("data-i18n",elogPaused?"elog.resume":"elog.pause");b.textContent=t(b.getAttribute("data-i18n"));
+ if(!elogPaused)elogPoll();
+}
+function elogClear(){elog.textContent="";}
 
 async function refreshSystem(){
  try{
@@ -453,6 +519,7 @@ async function doRestore(){
  await loadCsrf();
  await refreshSystem();
  setInterval(refreshSystem,3000);
+ elogPoll();setInterval(elogPoll,1000);   /* #LOG-1 */
 })();
 </script>
 <script src="/common-time.js"></script>

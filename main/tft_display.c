@@ -21,6 +21,7 @@
 #include "esp_random.h"
 #include "tft_display.h"
 #include "board_i2c.h"
+#include "driver/gpio.h"   // #I2C-1: сброс тача перед проверкой адреса
 #include "board_spi.h"      // #SD-1: общие выводы SPI дисплея и SD-карты
 #include "atomspectra.h"
 #include "spectrogram.h"   // spectrogram_get_dose_k() — тот же коэффициент дозы, что у веба
@@ -826,35 +827,56 @@ static void panel_init(void)
 #endif
 
     // ---------------- тач ----------------
+    // #I2C-1: без тача (нет шины, не отвечает) экран и LVGL всё равно поднимаются — раньше здесь
+    // был return до LVGL, и экран оставался тёмным.
     i2c_master_bus_handle_t i2c_bus = board_i2c_get_bus();
-    if (!i2c_bus) {
-        ESP_LOGW(TAG, "shared I2C bus unavailable — touch disabled (экран без тача)");
-        return;
+    if (!i2c_bus) ESP_LOGW(TAG, "shared I2C bus unavailable — touch disabled (экран без тача)");
+    if (i2c_bus) {
+        // #I2C-1: esp_lcd_panel_io_i2c ждёт шину БЕЗ таймаута (-1 в esp_lcd_panel_io_i2c_v2.c) — при
+        // залипшей шине здесь вставал весь app_main: ни экрана, ни веба. Сначала сброс тача и
+        // проверка адреса с таймаутом; не отвечает — экран и сеть без тача.
+        gpio_set_direction(TOUCH_PIN_RST, GPIO_MODE_OUTPUT);
+        gpio_set_level(TOUCH_PIN_RST, 0);
+        vTaskDelay(pdMS_TO_TICKS(10));
+        gpio_set_level(TOUCH_PIN_RST, 1);
+        esp_err_t pe = ESP_FAIL;
+        for (int i = 0; i < 6 && pe != ESP_OK; i++) {
+            vTaskDelay(pdMS_TO_TICKS(i ? 100 : 20));
+            pe = i2c_master_probe(i2c_bus, TOUCH_I2C_ADDR, 100);
+            if (pe != ESP_OK && i == 2) i2c_master_bus_reset(i2c_bus);
+        }
+        if (pe != ESP_OK) {
+            ESP_LOGE(TAG, "#I2C-1: touch 0x%02X not answering (%s) — touch disabled", TOUCH_I2C_ADDR, esp_err_to_name(pe));
+            i2c_bus = NULL;
+        }
     }
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
-    esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();
-    tp_io_config.dev_addr = TOUCH_I2C_ADDR;
-    err = esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_config, &tp_io_handle);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "esp_lcd_new_panel_io_i2c (touch) failed: %s — touch disabled", esp_err_to_name(err));
-        return;
+    if (i2c_bus) {
+        esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();
+        tp_io_config.dev_addr = TOUCH_I2C_ADDR;
+        err = esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_config, &tp_io_handle);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "esp_lcd_new_panel_io_i2c (touch) failed: %s — touch disabled", esp_err_to_name(err));
+            tp_io_handle = NULL;
+        }
     }
-
-    esp_lcd_touch_config_t tp_cfg = {
-        .x_max = TFT_H_RES,
-        .y_max = TFT_V_RES,
-        .rst_gpio_num = TOUCH_PIN_RST,
-        .int_gpio_num = TOUCH_PIN_INT,
-        // #TFT-4/#TFT-21: ВСЁ преобразование «сырые -> экран» делает
-        // touch_process() (калибровка). Флаги драйвера нулевые: его
-        // перестановка и отражения применялись бы поверх уже экранных координат.
-        .flags = { .swap_xy = 0, .mirror_x = 0, .mirror_y = 0 },
-        .process_coordinates = touch_process,
-    };
-    err = esp_lcd_touch_new_i2c_ft5x06(tp_io_handle, &tp_cfg, &s_touch);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "esp_lcd_touch_new_i2c_ft5x06 failed: %s — touch disabled", esp_err_to_name(err));
-        s_touch = NULL;
+    if (tp_io_handle) {
+        esp_lcd_touch_config_t tp_cfg = {
+            .x_max = TFT_H_RES,
+            .y_max = TFT_V_RES,
+            .rst_gpio_num = TOUCH_PIN_RST,
+            .int_gpio_num = TOUCH_PIN_INT,
+            // #TFT-4/#TFT-21: ВСЁ преобразование «сырые -> экран» делает
+            // touch_process() (калибровка). Флаги драйвера нулевые: его
+            // перестановка и отражения применялись бы поверх уже экранных координат.
+            .flags = { .swap_xy = 0, .mirror_x = 0, .mirror_y = 0 },
+            .process_coordinates = touch_process,
+        };
+        err = esp_lcd_touch_new_i2c_ft5x06(tp_io_handle, &tp_cfg, &s_touch);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "esp_lcd_touch_new_i2c_ft5x06 failed: %s — touch disabled", esp_err_to_name(err));
+            s_touch = NULL;
+        }
     }
 
 #if TFT_ENABLE < 2
@@ -3030,7 +3052,9 @@ static void render_spectrum(bool valid, const char *msg)
                         int y1 = top - 5 < 8 ? 8 : top - 5;
                         for (int yy = 2; yy <= y1; yy++) PX(x, yy) = c;   // 1 px (запрос 2026-10-17)
                     }
-                    lv_label_set_text(s_iso_lbl[nl], isoid_name(ir->f[i].src));
+                    char qs[24];   // #ISO-7: «Cs-137 92%»
+                    snprintf(qs, sizeof qs, "%s %d%%", isoid_name(ir->f[i].src), ir->f[i].quality);
+                    lv_label_set_text(s_iso_lbl[nl], qs);
                     lv_obj_set_style_text_color(s_iso_lbl[nl], c, 0);
                     lv_obj_clear_flag(s_iso_lbl[nl], LV_OBJ_FLAG_HIDDEN);
                     nl++;

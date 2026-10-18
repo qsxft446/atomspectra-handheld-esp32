@@ -38,6 +38,7 @@
 #include "esp_littlefs.h"
 #include "cps_alarm.h"         // #ALM-1
 #include "iso_live.h"          // #ISO-1
+#include "log_capture.h"       // #LOG-1
 #include "esp_random.h"
 #include <dirent.h>
 
@@ -297,6 +298,35 @@ static esp_err_t handle_devlog(httpd_req_t *req)
     return ESP_OK;
 }
 
+// #LOG-1: лог ESP32. GET /api/esplog?since=N -> text/plain целыми строками; X-Next — позиция для
+// следующего запроса, X-Lost: 1 — часть строк после since уже вытеснена из кольца 64 КБ.
+static esp_err_t handle_esplog(httpd_req_t *req)
+{
+    uint32_t since = 0;
+    char q[48], v[16];
+    if (httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK &&
+        httpd_query_key_value(q, "since", v, sizeof(v)) == ESP_OK)
+        since = strtoul(v, NULL, 10);
+    const size_t cap = 64 * 1024;
+    char *buf = heap_caps_malloc(cap, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
+        return ESP_FAIL;
+    }
+    uint32_t next;
+    bool lost;
+    size_t n = log_capture_read(since, buf, cap, &next, &lost);
+    char nx[12];
+    snprintf(nx, sizeof nx, "%lu", (unsigned long)next);
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(req, "X-Next", nx);
+    httpd_resp_set_hdr(req, "X-Lost", lost ? "1" : "0");
+    httpd_resp_send(req, buf, n);
+    free(buf);
+    return ESP_OK;
+}
+
 // #MON-1: серия CPS-мониторинга с платы. GET /api/monitor/series?since=<seq>
 // Read-only (CSRF не нужен, как /api/devlog). Ответ:
 //   {"epoch":E,"next_seq":N,"first_seq":F,"interval_base":1,
@@ -455,8 +485,8 @@ static esp_err_t handle_isotopes(httpd_req_t *req)
             const isoid_found_t *f = &r->f[i];
             if ((pass == 0) == f->natural) continue;
             pos += snprintf(out + pos, 3072 - pos, "%s{\"name\":\"%s\",\"nat\":%s,\"col\":\"#%06lX\",\"conf\":%.2f,"
-                            "\"sig\":%.1f,\"ch\":[", k++ ? "," : "", isoid_name(f->src), f->natural ? "true" : "false",
-                            (unsigned long)iso_live_color(r, i), (double)f->conf, (double)f->sig);
+                            "\"sig\":%.1f,\"q\":%d,\"ch\":[", k++ ? "," : "", isoid_name(f->src), f->natural ? "true" : "false",
+                            (unsigned long)iso_live_color(r, i), (double)f->conf, (double)f->sig, f->quality);
             for (int m = 0; m < f->n_mark; m++)
                 pos += snprintf(out + pos, 3072 - pos, "%s%.1f", m ? "," : "", (double)f->mark_ch[m]);
             pos += snprintf(out + pos, 3072 - pos, "],\"kev\":[");
@@ -2115,6 +2145,7 @@ void web_server_init(void)
         {"/api/spectrum.json",           HTTP_GET,  handle_spectrum_json,    NULL},
         {"/api/command",                 HTTP_POST, handle_command,          NULL},
         {"/api/devlog",                  HTTP_GET,  handle_devlog,           NULL},
+        {"/api/esplog",                  HTTP_GET,  handle_esplog,           NULL},  // #LOG-1
         {"/api/monitor/series",          HTTP_GET,  handle_monitor_series,   NULL},  // #MON-1
         {"/api/monitor/session",         HTTP_POST, handle_monitor_session,  NULL},  // #MON-2
         {"/api/monitor/save",            HTTP_POST, handle_monitor_save,     NULL},  // #MON-8

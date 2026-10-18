@@ -478,22 +478,22 @@ async function isoPoll(){
 function drawIsotopes(N,yV,yMap){
  if(!isoRes||!isoRes.found||!isoRes.found.length)return;
  var nch=isoRes.nch||N,bw=PW/N;
- X.save();X.beginPath();X.rect(PL,PT,PW,PH);X.clip();X.lineWidth=2;
+ X.save();X.beginPath();X.rect(PL,PT,PW,PH);X.clip();X.lineWidth=1;
  isoRes.found.forEach(function(f){
   X.strokeStyle=f.col;
   f.ch.forEach(function(c){
    var i=Math.round(c*N/nch);if(i<0||i>=N)return;
    var top=PB;for(var k=Math.max(0,i-3);k<=Math.min(N-1,i+3);k++){var y=yMap(yV[k]);if(y<top)top=y;}
-   var x=PL+(i+0.5)*bw,y1=Math.max(PT+8,top-6);
+   var x=Math.round(PL+(i+0.5)*bw)+0.5,y1=Math.max(PT+8,top-6);   /* +0.5 — чёткая линия 1 px */
    X.beginPath();X.moveTo(x,PT+2);X.lineTo(x,y1);X.stroke();
   });
  });
  X.restore();
  X.font="bold 13px ui-monospace,monospace";X.textAlign="right";
  isoRes.found.forEach(function(f,j){
-  var y=PT+18+j*17,w=X.measureText(f.name).width;
+  var s=f.name+(f.q!=null?" "+f.q+"%":""),y=PT+18+j*17,w=X.measureText(s).width;   /* #ISO-7: качество */
   X.fillStyle="rgba(12,15,11,.75)";X.fillRect(PR-12-w,y-13,w+8,17);
-  X.fillStyle=f.col;X.fillText(f.name,PR-8,y);
+  X.fillStyle=f.col;X.fillText(s,PR-8,y);
  });
 }
 

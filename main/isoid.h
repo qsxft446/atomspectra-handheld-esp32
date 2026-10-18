@@ -18,6 +18,7 @@ typedef struct {
     bool  natural;                     // природный (K-40, ряды U/Th) — показывать серым
     float conf;                        // 0..1: доля ожидаемых линий, что найдены
     float sig;                         // значимость характерной линии, сигм
+    int   quality;                     // #ISO-7: качество обнаружения 0..100 % (оценка, не вероятность)
     int   n_mark;
     float mark_ch[ISOID_MAX_MARK];     // центры пиков его линий, канал
     float mark_kev[ISOID_MAX_MARK];

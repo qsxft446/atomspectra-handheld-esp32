@@ -214,8 +214,8 @@ static const iso_line_t LINES[] = {
     { 427.09, 1.76, 0 },
     { 445.03, 1.22, 0 },
     { 832.01, 3.52, 0 },
-    { 69.67, 4.67, 0 },
-    { 103.18, 29.14, 0 },
+    { 477.60, 10.44, 0 },   // Be-7 (вместо Sm-153: его 69.7/103 — внутри рентгеновского комплекса
+                            // Pb/Bi/Th 75-100 кэВ, на NaI не отличить — ложный Sm-153 в фоне, #ISO-5)
 };
 static const iso_src_t SRC[] = {
     { "K-40", 0, 1, true },
@@ -247,7 +247,7 @@ static const iso_src_t SRC[] = {
     { "I-123", 162, 2, false },
     { "Tl-201", 164, 4, false },
     { "Ra-223", 168, 14, false },
-    { "Sm-153", 182, 2, false },
+    { "Be-7", 182, 1, true },
 };
 
 #define NSRC        ((int)(sizeof SRC / sizeof SRC[0]))
@@ -264,6 +264,10 @@ static const iso_src_t SRC[] = {
 #define NAT_SHARE   0.15     // ... или её линия здесь заметна: вес >= 15 % характерной (в долгом фоне
                              // соотношения линий плывут: 1127 кэВ при Ra по 352 объяснялся лишь на 14 %)
 #define SW          7        // сглаживание, каналов
+#define HUMP_K      0.6      // #ISO-6: пик без кривизны подложки < 60 % отклика — горб подложки
+#define LOW_KEV     120      // #ISO-6: ниже — горб подложки NaI и рентген
+#define PB_LOW      0.2      // #ISO-6: опознание только по линиям ниже LOW_KEV — пик >= 20 % над подложкой,
+#define SIG_LOW     25       //         если он слабее 25σ
 
 typedef struct { float ch, kev, net, sig, res, pbr, wr; bool bs; } peak_t;   // pbr — нетто/подложка; wr — ширина/модель; bs — артефакт
 
@@ -461,6 +465,21 @@ static int find_pass(const float *y, const uint32_t *raw, int n, const double *c
             if (j >= 0 && j < n && j != i && (z[j] > z[i] || (z[j] == z[i] && j < i))) top = false;
         if (!top) continue;
         double w = fwhm_ch(c, order, i), net, bg, tot, mu, wr;
+        // #ISO-6: «цилиндр» отвечает и на выпуклую подложку (горб фона NaI 40-80 кэВ при большом наборе
+        // давал «пики» -> U-238 63, Am-241 59.5, Pb-210 46.5 на спектре без пиков). Отклик на ±1 и ±2 FWHM:
+        // у гауссианы n1 = 0.94A, n2 = A; у параболы n2 = 4·n1 -> A = (4·n1 - n2)/2.75 без кривизны.
+        if (!pass) {
+            int w1 = (int)w, w2 = 2 * w1;
+            if (i - w2 >= 0 && i + w2 < n) {
+                double n1 = s[i] - 0.5 * (s[i - w1] + s[i + w1]);
+                double n2 = s[i] - 0.5 * (s[i - w2] + s[i + w2]);
+                double A = (4 * n1 - n2) / 2.75;
+                if (A < HUMP_K * n1) {
+                    DBG("  hump  ch %6d  %7.1f keV  z %5.1f  A/n1 %.2f\n", i, s_E[i], z[i], n1 > 0 ? A / n1 : 0);
+                    continue;
+                }
+            }
+        }
         // Второй проход ищет только «плечо» сильного пика: в 0.8..2.2 FWHM от найденного в
         // первом. Дальше первый проход уже всё видел, а остатки вычитания у очень сильных пиков
         // (форма NaI не чисто гауссова) иначе рождают ложные пики.
@@ -644,8 +663,20 @@ static void evaluate(int s, const uint32_t *y, int n, const double *c, int order
     double sig_c = pk[pc].res / (pk[pc].net / pk[pc].sig);   // остаток / σ площади
     if (sig_c < Z_CHAR) return;
     if (!SRC[s].natural && pk[pc].pbr < PB_MIN) return;      // неровность подложки, а не пик
+    if (E->b[ch_i].kev < LOW_KEV && pk[pc].pbr < PB_LOW && pk[pc].sig < SIG_LOW) {
+        // #ISO-6: опознание держится только на линиях ниже 120 кэВ (Am-241 59.5, Pb-210 46.5, U-238
+        // 63.3) — там горб подложки NaI; настоящие такие пики стоят над подложкой на 0.3-0.4, горб — 0.05-0.13.
+        // Сильнее SIG_LOW горб уже отсекла проверка кривизны (HUMP_K), а Pb-210 свинцовой защиты — 0.13 при 41σ
+        bool hi = false;
+        for (int i = 0; i < E->nb && !hi; i++) {
+            int p = E->pk[i];
+            hi = !E->b[i].xray && p >= 0 && !pk[p].bs && E->b[i].kev >= LOW_KEV && pk[p].sig >= Z_CHAR;
+        }
+        if (!hi) return;
+    }
     double S = pk[pc].res / E->b[ch_i].w;
     double found = 0, expect = 0, zsum = 0;
+    bool strong_miss = false;
     for (int i = 0; i < E->nb; i++) {
         if (E->b[i].need && E->pk[i] < 0) {   // обязательная опора (511 Na-22) не найдена
             double ch = ch_of(c, order, E->b[i].kev, 0, n - 1), w = fwhm_ch(c, order, ch), B = 0;
@@ -670,6 +701,9 @@ static void evaluate(int s, const uint32_t *y, int n, const double *c, int order
         }
         double xs = X / sgm;          // ожидаемая значимость
         if (xs < 3 && p < 0) continue;   // не видна бы и так — не учитываем
+        // #ISO-5: у техногенного нет линии, которая при этом масштабе была бы видна >= 6 сигм, —
+        // это не он (Y-88 без 1836 на Ac-228 911 бетона: 1836 ждали ~400 отсчётов почти без подложки)
+        if (p < 0 && xs >= 6 && !SRC[s].natural) strong_miss = true;
         expect += E->b[i].w;
         if (p >= 0 && pk[p].res > 0) {
             double fr = pk[p].res / X;
@@ -696,7 +730,7 @@ static void evaluate(int s, const uint32_t *y, int n, const double *c, int order
     E->sig = sig_c;
     E->zsum = zsum;
     E->S = S;
-    E->ok = E->conf >= CONF_MIN;
+    E->ok = E->conf >= CONF_MIN && !strong_miss;
 }
 
 void isoid_tune_default(isoid_tune_t *t)
@@ -850,7 +884,14 @@ int isoid_run(const uint32_t *bins, int n, const double *cal, int order, void *w
         F->natural = SRC[bs].natural;
         F->conf = (float)best.conf;
         F->sig = (float)best.sig;
-        DBG("  => %s (conf %.2f, sig %.1f)\n", SRC[bs].name, best.conf, best.sig);
+        {   // #ISO-7: качество — по сумме значимостей найденных линий (4σ ~30 %, 8σ ~80 %, 12σ ~95 %),
+            // неполный набор линий (conf < 0.8) снижает до 20 %: у рядов слабые линии тонут в фоне
+            double qz = 1 - exp(-(best.zsum - 2.9) / 3), cn = (best.conf - 0.5) / 0.3;
+            if (qz < 0) qz = 0;
+            if (cn < 0) cn = 0; else if (cn > 1) cn = 1;
+            F->quality = (int)(100 * qz * (0.8 + 0.2 * cn) + 0.5);
+        }
+        DBG("  => %s (conf %.2f, sig %.1f, zsum %.1f, q %d)\n", SRC[bs].name, best.conf, best.sig, best.zsum, F->quality);
         // #ISO-3: точки шкалы — гамма-линии уверенно найденного источника (линия / центр пика)
         for (int i = 0; i < best.nb && best.conf >= 0.7 && ngp < MAX_GP; i++) {
             int p = best.pk[i];
