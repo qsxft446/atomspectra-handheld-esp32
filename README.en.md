@@ -44,7 +44,7 @@ The screen is a mini copy of the web UI (LVGL 8):
   the card and open saved spectra on the plot.
 - **"On the tube" view** — for a unit clamped to the spectrometer tube: a long press in
   the centre of the screen switches to portrait orientation with a large CPS value, the
-  monitoring chart and the spectrum. Double tap on the monitoring chart starts monitoring,
+  monitoring chart and the spectrum with the identified nuclides. Double tap on the monitoring chart starts monitoring,
   on the spectrum toggles Lin/Log; a right-to-left swipe clears the spectrum or the
   monitoring (independently).
 - **Automatic energy calibration** (**Cal** button, long press): Ra-226, Th-232, Na-22 or

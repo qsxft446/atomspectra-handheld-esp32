@@ -307,6 +307,7 @@ static bool     s_saved_on;                  // график показывае�
 // #ISO-1 (запрос 2026-10-17): найденные нуклиды — цветные линии над их пиками и список тех же
 // цветов в правом верхнем углу графика (природные — серым). Только живой спектр.
 static lv_obj_t       *s_iso_lbl[ISOID_MAX_FOUND];
+static lv_obj_t       *s_mnt_iso_lbl[ISOID_MAX_FOUND];   // #MNT-7: то же в виде «на трубе»
 static isoid_result_t *s_iso_r;          // копия результата, PSRAM
 static bool     s_force_plot;                // перерисовать график в этом проходе (только tft_task)
 static lv_obj_t *s_saved_lbl, *s_live_btn;
@@ -2680,6 +2681,15 @@ static bool build_ui(void)
     lv_obj_add_event_cb(s_mnt_spec, mnt_swipe_ev_cb, LV_EVENT_SHORT_CLICKED, (void *)0);
     s_mnt_sinfo = mk_label(s_mnt, 0, 0, &lv_font_montserrat_12, COL_TICK_X, "");
     lv_obj_align(s_mnt_sinfo, LV_ALIGN_TOP_RIGHT, -(MNT_X + 6), MNT_SPEC_Y + 3);
+    // #MNT-7: найденные нуклиды — справа под строкой окна/шкалы, как список вкладки Spectrum
+    for (int i = 0; i < ISOID_MAX_FOUND; i++) {
+        s_mnt_iso_lbl[i] = mk_label(s_mnt, 0, 0, &lv_font_montserrat_14, COL_TXT, "");
+        lv_obj_set_style_bg_color(s_mnt_iso_lbl[i], lv_color_hex(COL_BG), 0);
+        lv_obj_set_style_bg_opa(s_mnt_iso_lbl[i], LV_OPA_60, 0);
+        lv_obj_set_style_pad_hor(s_mnt_iso_lbl[i], 3, 0);
+        lv_obj_align(s_mnt_iso_lbl[i], LV_ALIGN_TOP_RIGHT, -(MNT_X + 4), MNT_SPEC_Y + 20 + i * 17);
+        lv_obj_add_flag(s_mnt_iso_lbl[i], LV_OBJ_FLAG_HIDDEN);
+    }
     s_mnt_smsg = mk_label(s_mnt, MNT_X, MNT_SPEC_Y + MNT_SPEC_H / 2 - 9, &lv_font_montserrat_14, COL_DIM, "");
     lv_obj_set_width(s_mnt_smsg, MNT_W);
     lv_obj_set_style_text_align(s_mnt_smsg, LV_TEXT_ALIGN_CENTER, 0);
@@ -2757,6 +2767,42 @@ static int y_row_h(float v, bool lg, float lo, float hi, int h)
 }
 
 static int y_row(float v, bool lg, float lo, float hi) { return y_row_h(v, lg, lo, hi, PLOT_H); }
+
+// #ISO-1 / #MNT-7: найденные нуклиды поверх спектра — линия 1 px над каждым их пиком (от верха до
+// вершины пика с зазором 5 px; вершина — по колонкам s_col, построенным под ширину w) и подписи
+// «имя N%» в lbl[] тех же цветов; техногенные первыми, природные — после. show = false — всё скрыть.
+// Общая для вкладки Spectrum и вида «на трубе». Под lvgl_port_lock, после build_columns(..., w).
+static void iso_overlay(bool show, lv_color_t *buf, int w, int h, bool lg, float ylo, float yhi, lv_obj_t **lbl)
+{
+    int nl = 0;
+    if (show && s_iso_r && iso_live_get(s_iso_r)) {
+        const isoid_result_t *ir = s_iso_r;
+        const int range = SPEC_CH_TO - SPEC_CH_FROM + 1;
+        for (int pass = 0; pass < 2; pass++)
+            for (int i = 0; i < ir->n && nl < ISOID_MAX_FOUND; i++) {
+                if ((pass == 0) == ir->f[i].natural) continue;
+                lv_color_t c = lv_color_hex(iso_live_color(ir, i));
+                for (int k = 0; k < ir->f[i].n_mark; k++) {
+                    int x = (int)((ir->f[i].mark_ch[k] - SPEC_CH_FROM) / range * w + 0.5f);
+                    if (x < 1 || x >= w - 2) continue;
+                    int top = h;
+                    for (int dx = -2; dx <= 2; dx++) {
+                        int yy = y_row_h(s_col[x + dx < 0 ? 0 : x + dx >= w ? w - 1 : x + dx], lg, ylo, yhi, h);
+                        if (yy < top) top = yy;
+                    }
+                    int y1 = top - 5 < 8 ? 8 : top - 5;
+                    for (int yy = 2; yy <= y1; yy++) buf[yy * w + x] = c;   // 1 px (запрос 2026-10-17)
+                }
+                char qs[24];   // #ISO-7: «Cs-137 92%»
+                snprintf(qs, sizeof qs, "%s %d%%", isoid_name(ir->f[i].src), ir->f[i].quality);
+                lv_label_set_text(lbl[nl], qs);
+                lv_obj_set_style_text_color(lbl[nl], c, 0);
+                lv_obj_clear_flag(lbl[nl], LV_OBJ_FLAG_HIDDEN);
+                nl++;
+            }
+    }
+    for (int i = nl; i < ISOID_MAX_FOUND; i++) lv_obj_add_flag(lbl[i], LV_OBJ_FLAG_HIDDEN);
+}
 
 // Шкала Y спектра: Lin веба — 0..пик, деления niceStep(mx, 6); Log веба (#UI-36) —
 // верх пик + 0.15 декады, пол — ОДИН отсчёт за время набора (не меньше декады),
@@ -3031,36 +3077,8 @@ static void render_spectrum(bool valid, const char *msg)
             for (int yy = a; yy <= b; yy++) PX(x, yy) = s_c_line;
             prev = y;
         }
-        // #ISO-1: найденные нуклиды — линия над каждым их пиком (от верха графика до вершины
-        // пика с зазором 5 px) и список тех же цветов; техногенные первыми, природные — серым.
-        int nl = 0;
-        if (!s_saved_on && sp->calib_valid && s_iso_r && iso_live_get(s_iso_r)) {
-            const isoid_result_t *ir = s_iso_r;
-            for (int pass = 0; pass < 2; pass++)
-                for (int i = 0; i < ir->n && nl < ISOID_MAX_FOUND; i++) {
-                    if ((pass == 0) == ir->f[i].natural) continue;
-                    uint32_t col = iso_live_color(ir, i);
-                    lv_color_t c = lv_color_hex(col);
-                    for (int k = 0; k < ir->f[i].n_mark; k++) {
-                        int x = (int)((ir->f[i].mark_ch[k] - SPEC_CH_FROM) / range * PLOT_W + 0.5f);
-                        if (x < 1 || x >= PLOT_W - 2) continue;
-                        int top = PLOT_H;
-                        for (int dx = -2; dx <= 2; dx++) {
-                            int yy = y_row(s_col[x + dx < 0 ? 0 : x + dx >= PLOT_W ? PLOT_W - 1 : x + dx], lg, ylo, yhi);
-                            if (yy < top) top = yy;
-                        }
-                        int y1 = top - 5 < 8 ? 8 : top - 5;
-                        for (int yy = 2; yy <= y1; yy++) PX(x, yy) = c;   // 1 px (запрос 2026-10-17)
-                    }
-                    char qs[24];   // #ISO-7: «Cs-137 92%»
-                    snprintf(qs, sizeof qs, "%s %d%%", isoid_name(ir->f[i].src), ir->f[i].quality);
-                    lv_label_set_text(s_iso_lbl[nl], qs);
-                    lv_obj_set_style_text_color(s_iso_lbl[nl], c, 0);
-                    lv_obj_clear_flag(s_iso_lbl[nl], LV_OBJ_FLAG_HIDDEN);
-                    nl++;
-                }
-        }
-        for (int i = nl; i < ISOID_MAX_FOUND; i++) lv_obj_add_flag(s_iso_lbl[i], LV_OBJ_FLAG_HIDDEN);
+        // #ISO-1: найденные нуклиды — линии над пиками и список (общий с видом «на трубе», #MNT-7)
+        iso_overlay(!s_saved_on && sp->calib_valid, s_plot_buf, PLOT_W, PLOT_H, lg, ylo, yhi, s_iso_lbl);
         lv_obj_clear_flag(s_xunit, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -3528,6 +3546,7 @@ static void mnt_render_spectrum(bool valid, const char *msg)
             for (int yy = a; yy <= b; yy++) MSPX(x, yy) = s_c_line;
             prev = y;
         }
+        iso_overlay(kev, s_mnt_spec_buf, MNT_W, MNT_SPEC_H, lg, ylo, yhi, s_mnt_iso_lbl);   // #MNT-7
         if (kev) snprintf(txt, sizeof txt, "%.0f-%.0f keV, %s", lo, hi, lg ? "log" : "lin");
         else     snprintf(txt, sizeof txt, "ch %d-%d, %s", SPEC_CH_FROM, SPEC_CH_TO, lg ? "log" : "lin");
         lv_label_set_text(s_mnt_sinfo, txt);
@@ -3535,6 +3554,7 @@ static void mnt_render_spectrum(bool valid, const char *msg)
         lv_obj_add_flag(s_mnt_smsg, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_mnt_sinfo, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < ISOID_MAX_FOUND; i++) lv_obj_add_flag(s_mnt_iso_lbl[i], LV_OBJ_FLAG_HIDDEN);   // #MNT-7
         lv_label_set_text(s_mnt_smsg, msg ? msg : "");
         lv_obj_clear_flag(s_mnt_smsg, LV_OBJ_FLAG_HIDDEN);
     }
