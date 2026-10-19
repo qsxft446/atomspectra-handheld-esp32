@@ -597,7 +597,8 @@ void usb_host_cdc_init(void)
         // контексте этого таска через data_cb→handle_rx_packet и раньше клал
         // ~3.5 КБ локальных буферов на стек (P1-1). Буфер вынесен в static,
         // плюс расширенный стек убирает остаточный риск переполнения.
-        .driver_task_stack_size = 8192,
+        // #RAM-2 (2026-10-19): 8192 -> 6144, замер — занято ~2 КБ (приём кладёт в кольцо, разбор — usb_rxw).
+        .driver_task_stack_size = 6144,
         .driver_task_priority = 8,   // #FW-8: выше httpd(5) и usb_lib(7)
         .xCoreID = 0,
     };
@@ -620,7 +621,8 @@ void usb_host_cdc_init(void)
     if (s_rx_ring) {
         // usb_rxw prio 6 core0: ниже CDC(8)/usb_lib(7) — не вытесняет USB-сервис,
         // выше httpd(5) — успевает разгребать кольцо в окне выгрузки сегмента.
-        xTaskCreatePinnedToCore(usb_rx_worker, "usb_rxw", 8192, NULL, 6, NULL, 0);
+        // #RAM-2: 8192 -> 5120, замер — занято ~1.7 КБ.
+        xTaskCreatePinnedToCore(usb_rx_worker, "usb_rxw", 5120, NULL, 6, NULL, 0);
         ESP_LOGI(TAG, "RX ring %d B (internal) + usb_rxw started", RX_RING_BYTES);
     } else {
         // фоллбэк: без кольца data_cb уходит в старый синхронный путь (s_rx_ring==NULL)

@@ -113,11 +113,34 @@ static void restart_cb(void *arg)
     if (s_restart) esp_restart();
 }
 
+// #RAM-2: минимальный остаток стека каждой задачи с её старта — в лог через 2 мин и раз в 10 мин
+// (W, если у кого-то меньше 768 Б): проверка урезанных стеков.
+static void stack_report(void)
+{
+    UBaseType_t n = uxTaskGetNumberOfTasks();
+    TaskStatus_t *ts = heap_caps_malloc(n * sizeof *ts, MALLOC_CAP_SPIRAM);
+    if (!ts) return;
+    n = uxTaskGetSystemState(ts, n, NULL);
+    char line[900];
+    int len = 0, low = 0;
+    for (UBaseType_t i = 0; i < n && len < (int)sizeof line - 32; i++) {
+        len += snprintf(line + len, sizeof line - len, " %s %u", ts[i].pcTaskName, (unsigned)ts[i].usStackHighWaterMark);
+        // системные задачи ESP-IDF (IDLE, ipc) штатно живут с остатком 0.5-0.7 КБ
+        bool sys = !strncmp(ts[i].pcTaskName, "IDLE", 4) || !strncmp(ts[i].pcTaskName, "ipc", 3);
+        low |= !sys && ts[i].usStackHighWaterMark < 768;
+    }
+    free(ts);
+    if (low) ESP_LOGW(TAG, "#RAM-2 stack free min, B:%s", line);
+    else     ESP_LOGI(TAG, "#RAM-2 stack free min, B:%s", line);
+}
+
 static void hang_task(void *arg)
 {
     (void)arg;
+    int tick = 0;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(2000));
+        if (++tick == 60 || tick % 300 == 0) stack_report();
         web_server_hb_kick();   // отметка httpd — из его же задачи (httpd_queue_work)
         if (ota_update_busy()) {   // OTA держит задачу httpd ~60 с — это не зависание
             s_hb[HB_HTTPD] = esp_timer_get_time();

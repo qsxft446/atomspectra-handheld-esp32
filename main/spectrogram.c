@@ -652,9 +652,11 @@ void spectrogram_init(void)
     if (s_commit_sig) spectrum_add_commit_listener(s_commit_sig);
     // wf_fs_task (consumer, prio 2 < producer): весь flash-I/O (opendir/readdir +
     // snprintf шапки на стеке → 8192). Producer prio 3 всегда вытесняет — такт точнее.
-    xTaskCreatePinnedToCore(wf_fs_task, "wf_fs", 8192, NULL, 2, NULL, 1);
+    // #RAM-2 (2026-10-19): 8192 -> 6144, замер — занято ~2.3 КБ (FAT, запись строки, лог ошибок).
+    xTaskCreatePinnedToCore(wf_fs_task, "wf_fs", 6144, NULL, 2, NULL, 1);
     // stack 8192: producer теперь без FS, но оставляем запас (snapshot + row_cb).
-    xTaskCreatePinnedToCore(wf_task, "wf", 8192, NULL, 3, NULL, 1);
+    // #RAM-2: 8192 -> 4096, замер — занято ~0.8 КБ (снимок, доза, рассылка строки WS).
+    xTaskCreatePinnedToCore(wf_task, "wf", 4096, NULL, 3, NULL, 1);
     spectrogram_load_dose_curve(); // попытка; FS смонтирована в main до вызова init()
 }
 
