@@ -110,6 +110,7 @@ enum { WIFI_TRY_OK = 0, WIFI_TRY_SAVED_REBOOT, WIFI_TRY_BAD_PASS, WIFI_TRY_NO_AP
 int  wifi_manager_try_sta(const char *ssid, const char *pass, int timeout_ms);   // #TFT-29: indoor/outdoor на следующий старт (ребут — вызывающий)
 bool wifi_manager_ap_forced(void);         // #FIELD-6: field_ap липкий (ap_mode=1) vs fallback
 void web_server_init(void);
+void web_server_hb_kick(void);   // #HANG-1: отметка задачи httpd (httpd_queue_work)
 
 void tcp_bridge_init(void);
 bool tcp_bridge_client_connected(void);
@@ -236,6 +237,7 @@ int spectrum_get_tcpot_raw(char *out, size_t outsz, uint32_t *out_seq);
 void spectrum_reset(void);
 const spectrum_data_t *spectrum_get_current(void);
 bool spectrum_get_snapshot(spectrum_data_t *out);
+void *spectrum_lock_holder(void);   // #HANG-1: задача, держащая замок спектра, или NULL
 // #MON-1: атомарная пара (total_counts, total_time_sec) под коммит-локом —
 // для монитора CPS; НЕ копирует 32 КБ bins (в отличие от spectrum_get_snapshot).
 void spectrum_get_totals(uint32_t *counts, uint32_t *time_sec);

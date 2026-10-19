@@ -751,6 +751,11 @@ const device_info_t   *spectrum_get_device_info(void) { return &s_device_info; }
 
 // Атомарный снимок спектра под локом — для сетевых читателей (export/spectrum).
 // Лок держится только на время memcpy; httpd_resp_send идёт уже по копии.
+void *spectrum_lock_holder(void)   // #HANG-1
+{
+    return s_spec_lock ? (void *)xSemaphoreGetMutexHolder(s_spec_lock) : NULL;
+}
+
 bool spectrum_get_snapshot(spectrum_data_t *out)
 {
     SPEC_LOCK();

@@ -1,4 +1,8 @@
 #pragma once
+#include <stdint.h>
+// #HANG-1: задача, держащая замок LVGL/SPI (наши захваты), NULL — никто из наших; *since — с какого момента, мкс.
+void *tft_display_lock_owner(int64_t *since);
+int tft_display_flushing(void);   // #HANG-1: 1 — LVGL ждёт конца передачи кадра, -1 — нет экрана
 // #TFT-1: ST7796U 480x320 (SPI, единственный ведущий SPI2_HOST — поддержка
 // W5500 из проекта вырезана, шину поднимает сам этот модуль)
 // + ёмкостный тач FT6336U (I2C, делит шину с board_i2c.h — battery.c/BQ25895).

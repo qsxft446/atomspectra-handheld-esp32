@@ -114,6 +114,7 @@ static esp_err_t fail(httpd_req_t *req, esp_ota_handle_t h, const char *status, 
 }
 
 static volatile bool s_busy;
+bool ota_update_busy(void) { return s_busy; }   // #HANG-1: OTA держит httpd ~60 с
 
 static esp_err_t h_ota(httpd_req_t *req)
 {

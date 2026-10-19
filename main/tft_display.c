@@ -56,8 +56,39 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include "hang_watch.h"   // #HANG-1
+#include "esp_rom_sys.h"  // #HANG-2: esp_rom_delay_us
 
 static const char *TAG = "tft";
+
+// #HANG-1: кто держит замок LVGL (он же замок шины SPI для SD, #SD-2) — для отчёта о зависании.
+// Видны только наши захваты; сама задача LVGL берёт замок внутри порта (тогда владелец «-»).
+static TaskHandle_t s_lv_owner;
+static int          s_lv_depth;   // замок рекурсивный; меняет только владелец
+static int64_t      s_lv_since;
+static bool lv_lock_tr(uint32_t t)
+{
+    bool ok = (lvgl_port_lock)(t);
+    if (ok && s_lv_depth++ == 0) { s_lv_owner = xTaskGetCurrentTaskHandle(); s_lv_since = esp_timer_get_time(); }
+    return ok;
+}
+static void lv_unlock_tr(void)
+{
+    if (s_lv_depth > 0 && --s_lv_depth == 0) s_lv_owner = NULL;
+    (lvgl_port_unlock)();
+}
+#define lvgl_port_lock(t)  lv_lock_tr(t)
+#define lvgl_port_unlock() lv_unlock_tr()
+void *tft_display_lock_owner(int64_t *since) { if (since) *since = s_lv_since; return s_lv_owner; }
+static bool s_lvgl_up;   // определение — ниже, с прочим состоянием порта
+// #HANG-1: LVGL ждёт конца передачи кадра (flush_ready не пришёл — задача LVGL крутится с замком). -1 — нет экрана.
+int tft_display_flushing(void)
+{
+    if (!s_lvgl_up) return -1;
+    lv_disp_t *d = lv_disp_get_default();
+    return d && d->driver && d->driver->draw_buf ? d->driver->draw_buf->flushing : -1;
+}
+static void hb_lvgl_cb(lv_timer_t *t) { (void)t; hang_watch_beat(HB_LVGL); }   // #HANG-1: задача LVGL жива
 
 // ---------------- пины (проверьте под свою разводку!) ----------------
 // #TFT-6: SPI2_HOST поднимает ЭТОТ модуль (поддержка W5500 вырезана из проекта,
@@ -2397,6 +2428,7 @@ static bool build_ui(void)
     lv_timer_create(dot_blink_cb, DOT_BLINK_MS, NULL);   // #TFT-39
     lv_timer_create(alm_blink_cb, 500, NULL);            // #ALM-1: мигание CPS при тревоге
     lv_timer_create(cps_fast_cb, 50, NULL);              // #CPS-1: число CPS сразу по STAT
+    lv_timer_create(hb_lvgl_cb, 1000, NULL);             // #HANG-1
 
     // Панель «Спектр».
     s_pane_spec = mk_pane(scr);
@@ -4154,7 +4186,20 @@ bool tft_display_present(void) { return s_ui_ok; }
 
 // #SD-2: см. tft_display.h. Замок порта рекурсивный — вложенный захват из
 // задачи, которая уже держит его (tft_task), безопасен.
-void tft_display_spi_lock(void)   { if (s_lvgl_up) lvgl_port_lock(0); }
+// #HANG-2 (2026-10-19): с trans_size = 0 (#TFT-31) порт отдаёт кусок кадра в DMA-очередь и не ждёт его —
+// замок LVGL отпускается, пока последний кусок ещё идёт по шине, и SD-транзакция (spi_device_acquire_bus +
+// spi_device_transmit, оба с portMAX_DELAY) начиналась поверх него. Отчёт #HANG-1: wf_fs 46 с «in transfer»,
+// ядра свободны (ждёт, не крутится). Под замком дождаться конца передачи кадра (flush_ready из прерывания).
+void tft_display_spi_lock(void)
+{
+    if (!s_lvgl_up) return;
+    lvgl_port_lock(0);
+    lv_disp_t *d = lv_disp_get_default();
+    if (!d || !d->driver || !d->driver->draw_buf) return;
+    int64_t t0 = esp_timer_get_time();
+    while (d->driver->draw_buf->flushing && esp_timer_get_time() - t0 < 100000) esp_rom_delay_us(50);
+    esp_rom_delay_us(20);   // прерывание SPI дорабатывает после колбэка flush_ready
+}
 void tft_display_spi_unlock(void) { if (s_lvgl_up) lvgl_port_unlock(); }
 bool tft_display_touch_calibrated(void) { return s_tcal.magic == TCAL_MAGIC; }
 
@@ -4335,6 +4380,7 @@ static void tft_task(void *arg)
         } else {
             xQueueReceive(s_cmd_q, &cmd, pdMS_TO_TICKS(1000));   // команда или раз в секунду
         }
+        hang_watch_beat(HB_TFT);   // #HANG-1
 #if TFT_PERF
         static int64_t perf_last;
         int64_t perf_t0 = esp_timer_get_time();

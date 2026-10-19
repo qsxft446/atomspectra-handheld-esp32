@@ -12,6 +12,7 @@
 #include "sd_card.h"      // #SD-1: слот microSD на модуле дисплея
 #include "sys_load.h"     // #SYS-1: загрузка ядер ESP32 в лог и на экран
 #include "log_capture.h"  // #LOG-1: лог ESP32 на странице «Сервис»
+#include "hang_watch.h"   // #HANG-1: детектор зависания задач
 #include "esp_ota_ops.h"   // #OTA-1: подтвердить новую прошивку после успешного старта
 #include "tft_display.h"  // #TFT-1: ST7796U 480x320 + тач FT6336U — водопад/спектр вместо SSD1306
 #include "esp_log.h"
@@ -86,6 +87,7 @@ void app_main(void)
 {
     log_capture_init();   // #LOG-1: первым — чтобы лог старта попал на страницу «Сервис»
     boot_wd_arm();        // #BOOT-1: сторож старта (s_stage — этап для лога зависания)
+    hang_watch_boot_report();   // #HANG-1: отчёт о зависании прошлого запуска -> в лог
     ESP_LOGI(TAG, "AtomSpectra Gateway starting...");
     sys_load_init();   // #SYS-1: замер загрузки ядер раз в секунду
 
@@ -109,6 +111,7 @@ void app_main(void)
     // позже садится на неё же.
     s_stage = "sd";
     sd_card_init();
+    hang_watch_save_sd();   // #HANG-1: отчёт -> /sdcard/hang.log (время уже из DS3231)
 
     // #FW-2/#FW-3: настройки поведения при старте платы (NVS, по умолчанию всё OFF).
     // #FW-44: весь USB-стек (boot_config → spectrum → spectrogram → usb_host_cdc)
@@ -195,6 +198,7 @@ void app_main(void)
     }
 
     boot_wd_done();   // #BOOT-1
+    hang_watch_start();   // #HANG-1
     ESP_LOGI(TAG, "All subsystems initialized");
 
     // #FW-13 фикс №2: autosave (32.8 КБ LittleFS = freeze кэша обоих ядер) фазово
@@ -206,6 +210,7 @@ void app_main(void)
     int info_tick = 0, autosave_tick = 0, uptime_ticks = 0;
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10000));
+        hang_watch_beat(HB_MAIN);   // #HANG-1
         // #OTA-1: прошивка, залитая по WiFi, стартует «на испытании»: если она упадёт
         // до этой отметки (30 с работы), загрузчик вернёт прежнюю. Вызов для уже
         // подтверждённой прошивки ничего не делает.

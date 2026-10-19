@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include "hang_watch.h"   // #HANG-1
 
 static const char *TAG = "wf";
 
@@ -762,6 +763,7 @@ static void wf_task(void *arg)
         // молчащем/отключённом приборе (прежнее поведение).
         if (s_commit_sig) xSemaphoreTake(s_commit_sig, pdMS_TO_TICKS(1500));
         else vTaskDelay(pdMS_TO_TICKS(1000));
+        hang_watch_beat(HB_WF);   // #HANG-1
 
         if (!s_status.recording) continue;
         if (s_rebase) {   // #WF-4
@@ -843,6 +845,7 @@ static void wf_fs_task(void *arg)
         // открытого сегмента даже без новых строк (при interval > MAX_AGE строк
         // между ролловерами нет вовсе).
         xSemaphoreTake(s_fs_sig, pdMS_TO_TICKS(5000));
+        hang_watch_beat(HB_WF_FS);   // #HANG-1
         for (;;) {
             LOCK();
             uint32_t g = s_fs_flushed, total = s_status.total_rows;
@@ -1189,6 +1192,12 @@ size_t spectrogram_stream_window(uint16_t *bounce, size_t max_rows,
         if (emit && !emit(ctx, bounce, WF_ROW_BYTES)) return i;
     }
     return n;
+}
+
+void spectrogram_lock_holders(void **ring, void **files)   // #HANG-1
+{
+    *ring  = s_lock    ? (void *)xSemaphoreGetMutexHolder(s_lock)    : NULL;
+    *files = s_fs_lock ? (void *)xSemaphoreGetMutexHolder(s_fs_lock) : NULL;
 }
 
 const char *spectrogram_seg_dir(void)

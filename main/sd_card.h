@@ -15,6 +15,9 @@
 void sd_card_init(void);
 
 bool sd_card_present(void);   // карта смонтирована
+// #HANG-1: задача в транзакции карты, с какого момента (мкс), ошибок транзакций с запуска;
+// шаг: 0 — нет транзакции, 1 — ждёт замок шины SPI (= замок экрана), 2 — обмен с картой.
+int sd_card_txn_state(void **task, int64_t *since, uint32_t *errs);
 // Объём и свободное место, байт. false — карты нет.
 bool sd_card_space(uint64_t *total, uint64_t *free_bytes);
 const char *sd_card_name(void);   // имя карты из CID ("" — нет карты)

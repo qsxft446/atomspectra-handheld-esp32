@@ -39,6 +39,7 @@
 #include "cps_alarm.h"         // #ALM-1
 #include "iso_live.h"          // #ISO-1
 #include "log_capture.h"       // #LOG-1
+#include "hang_watch.h"        // #HANG-1
 #include "esp_random.h"
 #include <dirent.h>
 
@@ -296,6 +297,18 @@ static esp_err_t handle_devlog(httpd_req_t *req)
     httpd_resp_sendstr(req, buf);
     free(buf);
     return ESP_OK;
+}
+
+// #HANG-1: отметка задачи httpd — работа ставится в её очередь и выполняется ею же; задача стоит
+// в обработчике — отметки нет. Кто-то ещё не встал в очередь — не ставим вторую.
+static httpd_handle_t s_hb_srv;
+static volatile bool  s_hb_pending;
+static void hb_work(void *arg) { (void)arg; s_hb_pending = false; hang_watch_beat(HB_HTTPD); }
+void web_server_hb_kick(void)
+{
+    if (!s_hb_srv || s_hb_pending) return;
+    s_hb_pending = true;
+    if (httpd_queue_work(s_hb_srv, hb_work, NULL) != ESP_OK) s_hb_pending = false;
 }
 
 // #LOG-1: лог ESP32. GET /api/esplog?since=N -> text/plain целыми строками; X-Next — позиция для
@@ -2137,6 +2150,7 @@ void web_server_init(void)
         ESP_LOGE(TAG, "Failed to start HTTP server");
         return;
     }
+    s_hb_srv = server;   // #HANG-1
 
     const httpd_uri_t uris[] = {
         {"/api/csrf-token",              HTTP_GET,  handle_csrf_token,       NULL},

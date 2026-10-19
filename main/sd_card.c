@@ -37,12 +37,31 @@ static sdmmc_card_t *s_card;
 // assert spi_hal_setup_trans (spi_ll_get_running_cmd(hw) == 0): polling-
 // транзакция sdspi стартовала поверх идущей DMA-передачи кадра esp_lcd.
 // Через do_transaction идут все команды, включая монтирование.
+// #HANG-1: кто сейчас в транзакции карты и на каком шаге (1 — ждёт замок шины, 2 — обмен с картой).
+static void *volatile    s_txn_task;
+static volatile int64_t  s_txn_since;
+static volatile int      s_txn_stage;
+static volatile uint32_t s_txn_errs;
 static esp_err_t sd_do_transaction(int slot, sdmmc_command_t *cmd)
 {
+    s_txn_task = xTaskGetCurrentTaskHandle();
+    s_txn_since = esp_timer_get_time();
+    s_txn_stage = 1;
     tft_display_spi_lock();
+    s_txn_stage = 2;
     esp_err_t err = sdspi_host_do_transaction(slot, cmd);
     tft_display_spi_unlock();
+    s_txn_stage = 0;
+    if (err != ESP_OK) s_txn_errs++;
     return err;
+}
+
+int sd_card_txn_state(void **task, int64_t *since, uint32_t *errs)
+{
+    *task = s_txn_task;
+    *since = s_txn_since;
+    *errs = s_txn_errs;
+    return s_txn_stage;
 }
 #if SD_SELFTEST
 static void sd_selftest_task(void *arg);

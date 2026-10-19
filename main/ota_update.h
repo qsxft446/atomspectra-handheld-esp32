@@ -13,5 +13,6 @@
 void ota_update_register(httpd_handle_t server);
 // Таблица разделов с OTA (ota_0/ota_1) — иначе загрузка по WiFi невозможна.
 bool ota_update_supported(void);
+bool ota_update_busy(void);   // #HANG-1: идёт приём образа
 // Метка раздела, с которого работает текущая прошивка ("ota_0", "factory", …).
 const char *ota_update_running_label(void);

@@ -148,6 +148,7 @@ size_t spectrogram_stream_window(uint16_t *bounce, size_t max_rows,
 // Каталог сегментов на Flash (/storage/wf). Файлы seg_NNNNN.aswf — каждый
 // самостоятельный валидный .aswf. Используется web-слоем для листинга/отдачи.
 const char *spectrogram_seg_dir(void);
+void spectrogram_lock_holders(void **ring, void **files);   // #HANG-1: держатели замков кольца и файлов
 
 // Индекс СЕЙЧАС открытого (недописанного) сегмента или 0xFFFFFFFF, если открытого
 // нет. Web-слой помечает его finalized:false в /segments (его шапка ещё не
